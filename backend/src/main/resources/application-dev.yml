@@ -23,6 +23,8 @@ langchain4j:
 zmail:
   jwt:
     secret: ${JWT_SECRET:dev-secret-min-32-chars-not-for-production!!}
+  embedding:
+    api-key: ${OPENAI_API_KEY:dev-placeholder-set-real-key-to-use-embeddings}
 
 management:
   endpoint:

@@ -101,8 +101,12 @@ zmail:
     memory-consolidation-cron: "0 0 0 * * *"
 
   vector-store:
-    dimension: 384
+    dimension: 1536
     collection-name: email_embeddings
+
+  embedding:
+    api-key: ${OPENAI_API_KEY}
+    model-name: text-embedding-3-small
 
 # ── Server ───────────────────────────────────────────────────────────────────
 server:
