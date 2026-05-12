@@ -81,14 +81,16 @@ zmail:
     secret: ${JWT_SECRET}
     expiry-ms: ${JWT_EXPIRY_MS:86400000}
 
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+
   gmail:
-    redirect-uri: ${GMAIL_REDIRECT_URI}
+    redirect-uri: ${GMAIL_REDIRECT_URI:http://localhost:8080/api/v1/auth/gmail/callback}
 
   msgraph:
     client-id: ${MSGRAPH_CLIENT_ID}
     client-secret: ${MSGRAPH_CLIENT_SECRET}
     tenant-id: ${MSGRAPH_TENANT_ID:common}
-    redirect-uri: ${MSGRAPH_REDIRECT_URI}
+    redirect-uri: ${MSGRAPH_REDIRECT_URI:http://localhost:8080/api/v1/auth/msgraph/callback}
 
   agent:
     classify-model: claude-haiku-4-5-20251001
