@@ -1,0 +1,142 @@
+package com.zmail.controller;
+
+import com.zmail.model.EmailProvider;
+import com.zmail.model.User;
+import com.zmail.service.JwtService;
+import com.zmail.service.UserService;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.*;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+@RestController
+@RequestMapping("/auth")
+@RequiredArgsConstructor
+@Slf4j
+public class AuthController {
+
+    private static final ParameterizedTypeReference<Map<String, Object>> MAP_TYPE =
+            new ParameterizedTypeReference<>() {};
+
+    private final ClientRegistrationRepository clientRegistrationRepository;
+    private final UserService userService;
+    private final JwtService jwtService;
+    private final RestTemplate restTemplate;
+
+    @Value("${zmail.gmail.redirect-uri}")
+    private String gmailRedirectUri;
+
+    @Value("${zmail.frontend-url}")
+    private String frontendUrl;
+
+    // state -> expiry timestamp (ms). TODO: replace with Redis for multi-instance deployments
+    private final Map<String, Long> pendingStates = new ConcurrentHashMap<>();
+
+    // ── Gmail ──────────────────────────────────────────────────────────────────
+
+    @GetMapping("/gmail/login")
+    public void initiateGmailLogin(HttpServletResponse response) throws IOException {
+        ClientRegistration google = clientRegistrationRepository.findByRegistrationId("google");
+        String state = UUID.randomUUID().toString().replace("-", "");
+        pendingStates.put(state, System.currentTimeMillis() + 600_000L);
+
+        String authUri = UriComponentsBuilder
+                .fromHttpUrl(google.getProviderDetails().getAuthorizationUri())
+                .queryParam("client_id", google.getClientId())
+                .queryParam("redirect_uri", gmailRedirectUri)
+                .queryParam("response_type", "code")
+                .queryParam("scope", String.join(" ", google.getScopes()))
+                .queryParam("state", state)
+                .queryParam("access_type", "offline")
+                .queryParam("prompt", "consent")
+                .toUriString();
+
+        response.sendRedirect(authUri);
+    }
+
+    @GetMapping("/gmail/callback")
+    public void handleGmailCallback(@RequestParam String code,
+                                    @RequestParam String state,
+                                    HttpServletResponse response) throws IOException {
+        Long expiry = pendingStates.remove(state);
+        if (expiry == null || expiry < System.currentTimeMillis()) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid or expired OAuth2 state");
+            return;
+        }
+
+        ClientRegistration google = clientRegistrationRepository.findByRegistrationId("google");
+
+        // Exchange code for tokens
+        HttpHeaders formHeaders = new HttpHeaders();
+        formHeaders.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        params.add("code", code);
+        params.add("client_id", google.getClientId());
+        params.add("client_secret", google.getClientSecret());
+        params.add("redirect_uri", gmailRedirectUri);
+        params.add("grant_type", "authorization_code");
+
+        ResponseEntity<Map<String, Object>> tokenResp = restTemplate.exchange(
+                google.getProviderDetails().getTokenUri(),
+                HttpMethod.POST,
+                new HttpEntity<>(params, formHeaders),
+                MAP_TYPE
+        );
+
+        if (!tokenResp.getStatusCode().is2xxSuccessful() || tokenResp.getBody() == null) {
+            log.error("Token exchange failed: {}", tokenResp.getStatusCode());
+            response.sendError(HttpServletResponse.SC_BAD_GATEWAY, "Token exchange failed");
+            return;
+        }
+
+        Map<String, Object> tokenData = tokenResp.getBody();
+        String accessToken  = (String) tokenData.get("access_token");
+        String refreshToken = (String) tokenData.get("refresh_token");
+        long expiresIn      = ((Number) tokenData.get("expires_in")).longValue();
+        OffsetDateTime tokenExpiry = OffsetDateTime.now().plusSeconds(expiresIn);
+
+        // Fetch Google user info
+        HttpHeaders bearerHeaders = new HttpHeaders();
+        bearerHeaders.setBearerAuth(accessToken);
+        ResponseEntity<Map<String, Object>> userInfoResp = restTemplate.exchange(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                HttpMethod.GET,
+                new HttpEntity<>(bearerHeaders),
+                MAP_TYPE
+        );
+
+        if (!userInfoResp.getStatusCode().is2xxSuccessful() || userInfoResp.getBody() == null) {
+            log.error("User info fetch failed: {}", userInfoResp.getStatusCode());
+            response.sendError(HttpServletResponse.SC_BAD_GATEWAY, "Failed to fetch user info");
+            return;
+        }
+
+        Map<String, Object> userInfo = userInfoResp.getBody();
+        String email = (String) userInfo.get("email");
+        String name  = (String) userInfo.get("name");
+
+        // Persist and issue JWT
+        User user = userService.findOrCreate(email, name);
+        userService.upsertEmailAccount(user, EmailProvider.GMAIL, email,
+                accessToken, refreshToken, tokenExpiry);
+
+        String jwt = jwtService.generateToken(user.getId().toString());
+        log.info("Gmail OAuth2 completed for {}", email);
+        response.sendRedirect(frontendUrl + "/auth/callback?token=" + jwt + "&provider=gmail");
+    }
+}
