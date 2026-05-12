@@ -102,6 +102,10 @@ zmail:
     daily-summary-cron: "0 0 8 * * *"
     memory-consolidation-cron: "0 0 0 * * *"
 
+  proxy:
+    host: ${PROXY_HOST:}
+    port: ${PROXY_PORT:0}
+
   vector-store:
     dimension: 1536
     collection-name: email_embeddings
