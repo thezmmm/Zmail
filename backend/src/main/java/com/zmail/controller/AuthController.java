@@ -18,8 +18,11 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.OffsetDateTime;
+import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -113,23 +116,8 @@ public class AuthController {
         long expiresIn      = ((Number) tokenData.get("expires_in")).longValue();
         OffsetDateTime tokenExpiry = OffsetDateTime.now().plusSeconds(expiresIn);
 
-        // Fetch Google user info
-        HttpHeaders bearerHeaders = new HttpHeaders();
-        bearerHeaders.setBearerAuth(accessToken);
-        ResponseEntity<Map<String, Object>> userInfoResp = restTemplate.exchange(
-                "https://www.googleapis.com/oauth2/v2/userinfo",
-                HttpMethod.GET,
-                new HttpEntity<>(bearerHeaders),
-                MAP_TYPE
-        );
-
-        if (!userInfoResp.getStatusCode().is2xxSuccessful() || userInfoResp.getBody() == null) {
-            log.error("User info fetch failed: {}", userInfoResp.getStatusCode());
-            response.sendError(HttpServletResponse.SC_BAD_GATEWAY, "Failed to fetch user info");
-            return;
-        }
-
-        Map<String, Object> userInfo = userInfoResp.getBody();
+        // Parse user info from id_token JWT payload — avoids a second HTTP call
+        Map<String, Object> userInfo = decodeIdToken((String) tokenData.get("id_token"));
         String email = (String) userInfo.get("email");
         String name  = (String) userInfo.get("name");
 
@@ -235,5 +223,13 @@ public class AuthController {
         String jwt = jwtService.generateToken(user.getId().toString());
         log.info("MS Graph OAuth2 completed for {}", email);
         response.sendRedirect(frontendUrl + "/auth/callback?token=" + jwt + "&provider=msgraph");
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private Map<String, Object> decodeIdToken(String idToken) throws IOException {
+        String[] parts = idToken.split("\\.");
+        byte[] payload = Base64.getUrlDecoder().decode(parts[1]);
+        return new ObjectMapper().readValue(payload, new TypeReference<>() {});
     }
 }
