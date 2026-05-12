@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS email_embeddings (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email_id    UUID NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
     content     TEXT NOT NULL,
-    embedding   vector(1536),
+    embedding   vector(384),
     metadata    JSONB,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

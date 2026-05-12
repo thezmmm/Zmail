@@ -10,6 +10,9 @@ spring:
           google:
             client-id: ${GMAIL_CLIENT_ID:dev-gmail-client-id}
             client-secret: ${GMAIL_CLIENT_SECRET:dev-gmail-client-secret}
+          microsoft:
+            client-id: ${MSGRAPH_CLIENT_ID:dev-msgraph-client-id}
+            client-secret: ${MSGRAPH_CLIENT_SECRET:dev-msgraph-client-secret}
 
 langchain4j:
   anthropic:
@@ -20,12 +23,6 @@ langchain4j:
 zmail:
   jwt:
     secret: ${JWT_SECRET:dev-secret-min-32-chars-not-for-production!!}
-  gmail:
-    client-id: ${GMAIL_CLIENT_ID:dev-gmail-client-id}
-    client-secret: ${GMAIL_CLIENT_SECRET:dev-gmail-client-secret}
-  msgraph:
-    client-id: ${MSGRAPH_CLIENT_ID:dev-msgraph-client-id}
-    client-secret: ${MSGRAPH_CLIENT_SECRET:dev-msgraph-client-secret}
 
 management:
   endpoint:
