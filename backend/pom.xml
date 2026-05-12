@@ -135,6 +135,11 @@
       <version>${microsoft-graph.version}</version>
     </dependency>
     <dependency>
+      <groupId>com.microsoft.kiota</groupId>
+      <artifactId>microsoft-kiota-http-okHttp</artifactId>
+      <version>1.8.2</version>
+    </dependency>
+    <dependency>
       <groupId>com.azure</groupId>
       <artifactId>azure-identity</artifactId>
       <version>${azure-identity.version}</version>
