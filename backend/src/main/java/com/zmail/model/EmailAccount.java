@@ -1,5 +1,6 @@
 package com.zmail.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -21,6 +22,7 @@ public class EmailAccount {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
@@ -32,9 +34,11 @@ public class EmailAccount {
     @Column(name = "account_email", nullable = false)
     private String accountEmail;
 
+    @JsonIgnore
     @Column(name = "access_token", columnDefinition = "TEXT")
     private String accessToken;
 
+    @JsonIgnore
     @Column(name = "refresh_token", columnDefinition = "TEXT")
     private String refreshToken;
 

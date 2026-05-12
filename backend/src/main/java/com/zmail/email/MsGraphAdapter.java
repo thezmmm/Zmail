@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
@@ -45,8 +46,9 @@ public class MsGraphAdapter implements EmailPort {
             };
         });
         if (response == null || response.getValue() == null) return List.of();
+        UUID accountId = account.getId();
         return response.getValue().stream()
-                .map(this::toEmailMessage)
+                .map(msg -> toEmailMessage(msg, accountId))
                 .collect(Collectors.toList());
     }
 
@@ -110,7 +112,7 @@ public class MsGraphAdapter implements EmailPort {
         return new GraphServiceClient(new OkHttpRequestAdapter(authProvider));
     }
 
-    private EmailMessage toEmailMessage(Message msg) {
+    private EmailMessage toEmailMessage(Message msg, UUID accountId) {
         String sender = Optional.ofNullable(msg.getSender())
                 .map(Recipient::getEmailAddress)
                 .map(EmailAddress::getAddress)
@@ -129,6 +131,7 @@ public class MsGraphAdapter implements EmailPort {
 
         return new EmailMessage(
                 msg.getId(),
+                accountId,
                 msg.getSubject(),
                 sender,
                 recipients,

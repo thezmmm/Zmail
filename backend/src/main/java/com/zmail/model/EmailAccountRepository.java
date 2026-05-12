@@ -8,5 +8,6 @@ import java.util.UUID;
 
 public interface EmailAccountRepository extends JpaRepository<EmailAccount, UUID> {
     Optional<EmailAccount> findByUserAndProviderAndAccountEmail(User user, EmailProvider provider, String accountEmail);
+    List<EmailAccount> findAllByUser(User user);
     List<EmailAccount> findAllByUserAndProvider(User user, EmailProvider provider);
 }

@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
@@ -44,7 +45,7 @@ public class GmailAdapter implements EmailPort {
                         .get("me", ref.getId())
                         .setFormat("full")
                         .execute();
-                result.add(toEmailMessage(full));
+                result.add(toEmailMessage(full, account.getId()));
             }
             return result;
         } catch (Exception e) {
@@ -99,10 +100,11 @@ public class GmailAdapter implements EmailPort {
         }
     }
 
-    private EmailMessage toEmailMessage(Message message) {
+    private EmailMessage toEmailMessage(Message message, UUID accountId) {
         List<MessagePartHeader> headers = message.getPayload().getHeaders();
         return new EmailMessage(
                 message.getId(),
+                accountId,
                 getHeader(headers, "Subject"),
                 getHeader(headers, "From"),
                 parseAddressList(getHeader(headers, "To")),
