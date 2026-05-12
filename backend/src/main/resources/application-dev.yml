@@ -1,0 +1,39 @@
+spring:
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GMAIL_CLIENT_ID:dev-gmail-client-id}
+            client-secret: ${GMAIL_CLIENT_SECRET:dev-gmail-client-secret}
+
+langchain4j:
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY:dev-placeholder-set-real-key-to-use-llm}
+    log-requests: true
+    log-responses: true
+
+zmail:
+  jwt:
+    secret: ${JWT_SECRET:dev-secret-min-32-chars-not-for-production!!}
+  gmail:
+    client-id: ${GMAIL_CLIENT_ID:dev-gmail-client-id}
+    client-secret: ${GMAIL_CLIENT_SECRET:dev-gmail-client-secret}
+  msgraph:
+    client-id: ${MSGRAPH_CLIENT_ID:dev-msgraph-client-id}
+    client-secret: ${MSGRAPH_CLIENT_SECRET:dev-msgraph-client-secret}
+
+management:
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.zmail: DEBUG
+    dev.langchain4j: INFO
+    org.springframework.security: DEBUG

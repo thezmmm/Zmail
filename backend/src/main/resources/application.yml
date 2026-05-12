@@ -1,0 +1,103 @@
+spring:
+  application:
+    name: zmail-backend
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:zmail}
+    username: ${DB_USER:zmail}
+    password: ${DB_PASSWORD:changeme}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          min-idle: 2
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GMAIL_CLIENT_ID}
+            client-secret: ${GMAIL_CLIENT_SECRET}
+            redirect-uri: ${GMAIL_REDIRECT_URI}
+            scope:
+              - https://www.googleapis.com/auth/gmail.readonly
+              - https://www.googleapis.com/auth/gmail.send
+              - https://www.googleapis.com/auth/gmail.modify
+
+# ── LangChain4j / Claude ────────────────────────────────────────────────────
+langchain4j:
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY}
+    model-name: claude-sonnet-4-6
+    max-tokens: 4096
+    temperature: 0.3
+    log-requests: false
+    log-responses: false
+
+# ── App-specific ─────────────────────────────────────────────────────────────
+zmail:
+  jwt:
+    secret: ${JWT_SECRET}
+    expiry-ms: ${JWT_EXPIRY_MS:86400000}
+
+  gmail:
+    client-id: ${GMAIL_CLIENT_ID}
+    client-secret: ${GMAIL_CLIENT_SECRET}
+    redirect-uri: ${GMAIL_REDIRECT_URI}
+
+  msgraph:
+    client-id: ${MSGRAPH_CLIENT_ID}
+    client-secret: ${MSGRAPH_CLIENT_SECRET}
+    tenant-id: ${MSGRAPH_TENANT_ID:common}
+    redirect-uri: ${MSGRAPH_REDIRECT_URI}
+
+  agent:
+    classify-model: claude-haiku-4-5-20251001
+    summarize-model: claude-sonnet-4-6
+    max-emails-per-run: 50
+
+  scheduler:
+    email-sync-cron: "0 */5 * * * *"
+    daily-summary-cron: "0 0 8 * * *"
+    memory-consolidation-cron: "0 0 0 * * *"
+
+  vector-store:
+    dimension: 1536
+    collection-name: email_embeddings
+
+# ── Server ───────────────────────────────────────────────────────────────────
+server:
+  port: ${BACKEND_PORT:8080}
+  servlet:
+    context-path: /api/v1
+
+# ── Actuator ─────────────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
