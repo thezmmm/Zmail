@@ -76,6 +76,25 @@ public class GmailAdapter implements EmailPort {
         modifyLabels(account, messageId, List.of(), List.of("UNREAD"));
     }
 
+    @Override
+    public void flag(EmailAccount account, String messageId) {
+        modifyLabels(account, messageId, List.of("STARRED"), List.of());
+    }
+
+    @Override
+    public EmailMessage fetchById(EmailAccount account, String messageId) {
+        try {
+            Gmail service = buildService(account);
+            Message full = service.users().messages()
+                    .get("me", messageId)
+                    .setFormat("full")
+                    .execute();
+            return toEmailMessage(full, account.getId());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch Gmail message " + messageId, e);
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Gmail buildService(EmailAccount account) throws GeneralSecurityException, IOException {

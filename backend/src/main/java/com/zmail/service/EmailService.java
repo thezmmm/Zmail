@@ -45,6 +45,16 @@ public class EmailService {
         getAdapter(account.getProvider()).markRead(account, messageId);
     }
 
+    public void flag(UUID userId, UUID accountId, String messageId) {
+        EmailAccount account = findAccount(userId, accountId);
+        getAdapter(account.getProvider()).flag(account, messageId);
+    }
+
+    public EmailMessage fetchById(UUID userId, UUID accountId, String messageId) {
+        EmailAccount account = findAccount(userId, accountId);
+        return getAdapter(account.getProvider()).fetchById(account, messageId);
+    }
+
     private EmailPort getAdapter(EmailProvider provider) {
         return switch (provider) {
             case GMAIL -> gmailAdapter;

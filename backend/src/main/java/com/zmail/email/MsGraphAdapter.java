@@ -2,6 +2,8 @@ package com.zmail.email;
 
 import com.microsoft.graph.models.BodyType;
 import com.microsoft.graph.models.EmailAddress;
+import com.microsoft.graph.models.FollowupFlag;
+import com.microsoft.graph.models.FollowupFlagStatus;
 import com.microsoft.graph.models.ItemBody;
 import com.microsoft.graph.models.Message;
 import com.microsoft.graph.models.MessageCollectionResponse;
@@ -90,6 +92,24 @@ public class MsGraphAdapter implements EmailPort {
         Message patch = new Message();
         patch.setIsRead(true);
         buildClient(account).me().messages().byMessageId(messageId).patch(patch);
+    }
+
+    @Override
+    public void flag(EmailAccount account, String messageId) {
+        Message patch = new Message();
+        FollowupFlag followupFlag = new FollowupFlag();
+        followupFlag.setFlagStatus(FollowupFlagStatus.Flagged);
+        patch.setFlag(followupFlag);
+        buildClient(account).me().messages().byMessageId(messageId).patch(patch);
+    }
+
+    @Override
+    public EmailMessage fetchById(EmailAccount account, String messageId) {
+        Message msg = buildClient(account).me().messages().byMessageId(messageId).get(config ->
+                config.queryParameters.select = new String[]{
+                        "id", "subject", "sender", "toRecipients", "receivedDateTime", "body"
+                });
+        return toEmailMessage(msg, account.getId());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
