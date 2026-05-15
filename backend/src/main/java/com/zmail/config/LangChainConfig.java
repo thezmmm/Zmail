@@ -1,7 +1,8 @@
 package com.zmail.config;
 
-import dev.langchain4j.model.anthropic.AnthropicChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -16,13 +17,14 @@ public class LangChainConfig {
 
     private final AgentProperties agentProperties;
 
-    @Value("${langchain4j.anthropic.api-key}")
-    private String anthropicApiKey;
+    @Value("${langchain4j.open-ai.api-key}")
+    private String openAiApiKey;
 
     @Bean("classifyModel")
     public ChatLanguageModel classifyModel() {
-        return AnthropicChatModel.builder()
-                .apiKey(anthropicApiKey)
+        return OpenAiChatModel.builder()
+                .baseUrl(agentProperties.getBaseUrl())
+                .apiKey(openAiApiKey)
                 .modelName(agentProperties.getClassifyModel())
                 .maxTokens(512)
                 .temperature(0.0)
@@ -31,8 +33,9 @@ public class LangChainConfig {
 
     @Bean("summarizeModel")
     public ChatLanguageModel summarizeModel() {
-        return AnthropicChatModel.builder()
-                .apiKey(anthropicApiKey)
+        return OpenAiChatModel.builder()
+                .baseUrl(agentProperties.getBaseUrl())
+                .apiKey(openAiApiKey)
                 .modelName(agentProperties.getSummarizeModel())
                 .maxTokens(1024)
                 .temperature(0.3)
@@ -40,10 +43,20 @@ public class LangChainConfig {
     }
 
     /**
-     * Shared thread pool for parallel LLM calls inside ClassifyNode / SummarizeNode.
+     * Shared thread pool for parallel LLM calls inside SummarizeNode.
      * Pool size = maxParallelLlmCalls (default 5) → natural API concurrency cap.
      * Queue capacity absorbs bursts up to maxEmailsPerRun without rejection.
      */
+    @Bean("mainModel")
+    public OpenAiStreamingChatModel mainModel() {
+        return OpenAiStreamingChatModel.builder()
+                .baseUrl(agentProperties.getBaseUrl())
+                .apiKey(openAiApiKey)
+                .modelName(agentProperties.getMainModel())
+                .temperature(0.7)
+                .build();
+    }
+
     @Bean("agentExecutor")
     public Executor agentExecutor() {
         int parallelism = agentProperties.getMaxParallelLlmCalls();

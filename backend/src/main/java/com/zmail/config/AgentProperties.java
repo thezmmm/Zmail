@@ -10,8 +10,10 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class AgentProperties {
-    private String classifyModel = "claude-haiku-4-5-20251001";
-    private String summarizeModel = "claude-sonnet-4-6";
+    private String baseUrl = "https://api.openai.com/v1";
+    private String mainModel = "gpt-4o";
+    private String summarizeModel = "gpt-4o";
+    private String classifyModel = "gpt-4o-mini";
     private int maxEmailsPerRun = 50;
     /** Minimum milliseconds between two agent runs for the same user (default 60 s). */
     private long minRunIntervalMs = 60_000;

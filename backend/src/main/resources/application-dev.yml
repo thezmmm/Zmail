@@ -15,8 +15,8 @@ spring:
             client-secret: ${MSGRAPH_CLIENT_SECRET:dev-msgraph-client-secret}
 
 langchain4j:
-  anthropic:
-    api-key: ${ANTHROPIC_API_KEY:dev-placeholder-set-real-key-to-use-llm}
+  open-ai:
+    api-key: ${OPENAI_API_KEY:dev-placeholder-set-real-key-to-use-llm}
     log-requests: true
     log-responses: true
 

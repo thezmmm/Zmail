@@ -37,9 +37,9 @@ spring:
       client:
         registration:
           google:
-            client-id: ${GMAIL_CLIENT_ID}
-            client-secret: ${GMAIL_CLIENT_SECRET}
-            redirect-uri: ${GMAIL_REDIRECT_URI}
+            client-id: ${GMAIL_CLIENT_ID:dev-gmail-client-id}
+            client-secret: ${GMAIL_CLIENT_SECRET:dev-gmail-client-secret}
+            redirect-uri: ${GMAIL_REDIRECT_URI:http://localhost:8080/api/v1/auth/gmail/callback}
             authorization-grant-type: authorization_code
             scope:
               - openid
@@ -68,20 +68,17 @@ spring:
             user-info-uri: https://graph.microsoft.com/oidc/userinfo
             user-name-attribute: sub
 
-# ── LangChain4j / Claude ────────────────────────────────────────────────────
+# ── LangChain4j / OpenAI ────────────────────────────────────────────────────
 langchain4j:
-  anthropic:
-    api-key: ${ANTHROPIC_API_KEY}
-    model-name: claude-sonnet-4-6
-    max-tokens: 4096
-    temperature: 0.3
+  open-ai:
+    api-key: ${OPENAI_API_KEY:dev-placeholder-set-real-key}
     log-requests: false
     log-responses: false
 
 # ── App-specific ─────────────────────────────────────────────────────────────
 zmail:
   jwt:
-    secret: ${JWT_SECRET}
+    secret: ${JWT_SECRET:dev-secret-min-32-chars-not-for-production!!}
     expiry-ms: ${JWT_EXPIRY_MS:86400000}
 
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
@@ -96,8 +93,10 @@ zmail:
     redirect-uri: ${MSGRAPH_REDIRECT_URI:http://localhost:8080/api/v1/auth/msgraph/callback}
 
   agent:
-    classify-model: claude-haiku-4-5-20251001
-    summarize-model: claude-sonnet-4-6
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    main-model: gpt-4o
+    summarize-model: gpt-4o
+    classify-model: gpt-4o-mini
     max-emails-per-run: 50
 
   scheduler:
@@ -114,7 +113,7 @@ zmail:
     collection-name: email_embeddings
 
   embedding:
-    api-key: ${OPENAI_API_KEY}
+    api-key: ${OPENAI_API_KEY:dev-placeholder-set-real-key}
     model-name: text-embedding-3-small
 
 # ── Server ───────────────────────────────────────────────────────────────────
