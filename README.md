@@ -1,6 +1,6 @@
 # Zmail
 
-AI 驱动的邮件 Agent 桌面应用。自动读取、分类、摘要并对邮件采取行动，支持 Gmail 和 Outlook，以 Claude 作为推理核心。
+AI 驱动的邮件助手桌面应用。通过对话的方式帮你分析邮件、规划今日任务、起草回复，支持 Gmail 和 Outlook，LLM 核心使用 OpenAI GPT-4o。
 
 ## 架构概览
 
@@ -11,13 +11,18 @@ AI 驱动的邮件 Agent 桌面应用。自动读取、分类、摘要并对邮�
 │  │          Next.js 15 + React 19              │    │
 │  └──────────────────┬──────────────────────────┘    │
 └─────────────────────┼───────────────────────────────┘
-                      │ REST / HTTP
+                      │ REST / SSE
 ┌─────────────────────▼───────────────────────────────┐
 │              Spring Boot 3.4 后端                    │
 │                                                     │
 │  ┌──────────────────────────────────────────────┐   │
-│  │  LangGraph4j Agent 工作流                     │   │
-│  │  EmailFetch → Classify → Summarize → Action  │   │
+│  │           多 Agent 架构                        │   │
+│  │                                              │   │
+│  │  用户 ←── SSE ──→ [MainAgent]                │   │
+│  │                       │                     │   │
+│  │            ┌──────────┴──────────┐          │   │
+│  │      [DigestAgent]        [ActionAgent]     │   │
+│  │      邮件摘要 + 规划         单封邮件处理      │   │
 │  └──────────────────────────────────────────────┘   │
 │                                                     │
 │  ┌─────────────┐  ┌────────────┐  ┌─────────────┐  │
@@ -27,7 +32,7 @@ AI 驱动的邮件 Agent 桌面应用。自动读取、分类、摘要并对邮�
            │
 ┌──────────▼──────────────────────────────────────────┐
 │  PostgreSQL 16 + pgvector        Redis 7             │
-│  (向量记忆 / 邮件元数据)           (会话上下文缓存)   │
+│  (向量记忆 / 会话历史)             (会话上下文缓存)   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -39,7 +44,7 @@ AI 驱动的邮件 Agent 桌面应用。自动读取、分类、摘要并对邮�
 | 前端 | Next.js 15 · React 19 · TypeScript · Tailwind CSS 4 |
 | 后端 | Spring Boot 3.4 · Java 17 |
 | Agent 编排 | LangGraph4j 1.8 |
-| LLM 交互 | LangChain4j 1.0 · Claude API |
+| LLM 交互 | LangChain4j 1.0 · OpenAI API |
 | Embedding | OpenAI `text-embedding-3-small` (1536 维) |
 | 向量记忆 | PostgreSQL 16 + pgvector |
 | 短期记忆 | Redis 7 |
@@ -62,14 +67,15 @@ cp backend/.env.example backend/.env
 # 编辑 backend/.env，填入 API Key 和 OAuth 凭据
 ```
 
-| 变量 | 说明 |
-|---|---|
-| `ANTHROPIC_API_KEY` | Claude API 密钥 |
-| `OPENAI_API_KEY` | OpenAI API 密钥（用于 Embedding） |
-| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | Google Cloud Console OAuth 凭据 |
-| `JWT_SECRET` | 随机字符串，至少 32 位 |
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `OPENAI_API_KEY` | 是 | OpenAI API 密钥（LLM + Embedding） |
+| `OPENAI_BASE_URL` | 否 | 自定义接口地址，默认 `https://api.openai.com/v1` |
+| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | 是 | Google Cloud Console OAuth 凭据 |
+| `JWT_SECRET` | 是 | 随机字符串，至少 32 位 |
+| `MSGRAPH_CLIENT_ID` / `MSGRAPH_CLIENT_SECRET` | 否 | Azure 应用注册凭据（接 Outlook） |
 
-> **国内网络**：在 `backend/.env` 中设置 `PROXY_HOST=127.0.0.1` 和 `PROXY_PORT=<端口>`，所有对外请求均走代理。
+> **国内网络**：设置 `OPENAI_BASE_URL` 指向代理地址（如 `https://your-proxy.com/v1`）即可，无需其他改动。
 
 ### 2. 启动基础设施
 
@@ -78,6 +84,7 @@ docker-compose up -d
 ```
 
 ### 3. 启动后端
+
 **Windows (PowerShell)**
 ```powershell
 cd backend
@@ -104,25 +111,76 @@ npm run dev
 npm run tauri dev
 ```
 
-## 邮件账号接入
+## Agent 架构详解
 
-### 连接 Gmail
+Zmail 采用三层 Agent 设计：
 
-1. 访问 `http://localhost:8080/api/v1/auth/gmail/login`
-2. 完成 Google OAuth2 授权
-3. 授权后从回调 URL 取 JWT：`?token=<JWT>&provider=gmail`
+### MainAgent
+对话核心（GPT-4o，SSE 流式输出）。理解用户意图，决定调用哪个子 Agent，维护每个会话的对话历史。拥有三个工具：
+- `analyzeSelectedEmails` — 触发 DigestAgent 分析所选邮件
+- `draftEmailReply` — 通过 ActionAgent 起草回复
+- `askAboutEmail` — 通过 ActionAgent 回答关于某封邮件的问题
 
-### 连接 Outlook
+### DigestAgent（LangGraph4j 图）
+```
+FetchSelected → Summarize（并发）→ GenerateDigest
+```
+接收前端传入的邮件列表，并发摘要每封邮件，最后由 LLM 综合生成今日总览和优先行动清单。
 
-1. 访问 `http://localhost:8080/api/v1/auth/msgraph/login`
-2. 完成 Microsoft OAuth2 授权
-3. 授权后从回调 URL 取 JWT
+### ActionAgent
+针对单封邮件的辅助服务，支持起草回复和邮件内容问答。**所有操作均不自动执行**，生成结果后由用户决定。
 
 ## API 参考
 
 所有接口需要在请求头携带 JWT：`Authorization: Bearer <token>`
 
 响应格式统一为 `{ "data": ..., "error": null, "timestamp": "..." }`
+
+### 认证
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/auth/gmail/login` | 发起 Gmail OAuth2 授权 |
+| `GET` | `/auth/gmail/callback` | Gmail OAuth2 回调 |
+| `GET` | `/auth/msgraph/login` | 发起 Microsoft OAuth2 授权 |
+| `GET` | `/auth/msgraph/callback` | Microsoft OAuth2 回调 |
+
+### Agent 对话
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/agent/sessions` | 创建新会话 |
+| `GET` | `/agent/sessions` | 列出当前用户的所有会话 |
+| `GET` | `/agent/sessions/{id}` | 获取会话详情及完整消息历史 |
+| `DELETE` | `/agent/sessions/{id}` | 删除会话 |
+| `POST` | `/agent/chat` | 发送消息，返回 SSE 流 |
+
+#### 发送消息（SSE）
+
+```http
+POST /api/v1/agent/chat
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "sessionId": "uuid",
+  "message": "帮我分析一下今天的邮件",
+  "emails": [
+    { "providerId": "<gmail/graph message id>", "accountId": "<uuid>" }
+  ]
+}
+```
+
+`emails` 可选，传入时 MainAgent 可以对这些邮件进行分析和回复起草。
+
+#### SSE 事件
+
+| 事件名 | 数据 | 说明 |
+|---|---|---|
+| `token` | 文本片段 | LLM 流式输出的增量 token |
+| `done` | `[DONE]` | 流结束 |
+
+### 邮件
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -148,54 +206,34 @@ zmail/
 │   ├── .env              # 本地凭据（gitignored）
 │   ├── .env.example      # 配置模板
 │   └── src/main/java/com/zmail/
-│       ├── agent/        # LangGraph4j 图定义
-│       ├── config/       # Spring 配置（Security、JWT、代理）
-│       ├── controller/   # REST 控制器
+│       ├── agent/        # 多 Agent 实现（MainAgent / DigestAgent / ActionAgent）
+│       │   └── node/     # LangGraph4j 节点
+│       ├── config/       # Spring 配置（Security、LangChain4j、Agent 属性）
+│       ├── controller/   # REST 控制器（Auth / Chat / Session / Email）
 │       ├── email/        # EmailPort、GmailAdapter、MsGraphAdapter
-│       ├── memory/       # Redis + pgvector 记忆服务
-│       ├── model/        # JPA 实体
+│       ├── model/        # JPA 实体（User、AgentSession、AgentMessage 等）
 │       ├── scheduler/    # 定时任务
 │       └── service/      # 业务逻辑
 ├── docker-compose.yml
 └── CLAUDE.md
 ```
 
-## Agent 工作流
+## 使用的模型
 
-```
-EmailFetch
-    │
-    ▼
-Classify ──────────────────────────────────────────────┐
-    │  LLM 分配类别 / 优先级 / 情感                      │
-    ▼                                                   │
-Summarize                                              │
-    │  LLM 生成摘要 + 行动项                             │
-    ▼                                                   │
-ActionDecide                                           │
-    │                                                   │
-    ├──► Reply     （需要回复）                           │
-    ├──► Archive   （低优先级归档）                       │
-    └──► Flag      （需人工处理）◄──────────────────────┘
-```
-
-- **短期记忆**：Redis 缓存最近 N 封邮件的处理上下文
-- **长期记忆**：pgvector 存储邮件内容向量，支持语义检索历史邮件
+| 场景 | 模型 | 可配置 |
+|---|---|---|
+| 主对话（MainAgent） | `gpt-4o` | `zmail.agent.main-model` |
+| 邮件摘要 + 总览生成 | `gpt-4o` | `zmail.agent.summarize-model` |
+| 批量分类（预留） | `gpt-4o-mini` | `zmail.agent.classify-model` |
+| Embedding | `text-embedding-3-small` | `zmail.embedding.model-name` |
 
 ## 定时任务
 
 | 任务 | 触发时间 | 说明 |
 |---|---|---|
-| EmailSyncJob | 每 5 分钟 | 从 Gmail / Graph 拉取新邮件并触发 Agent 处理 |
-| DailySummaryJob | 每天 08:00 | 生成每日邮件摘要 |
-| MemoryConsolidationJob | 每天 00:00 | 压缩历史邮件记忆到 pgvector |
-
-## 使用的 Claude 模型
-
-| 场景 | 模型 |
-|---|---|
-| 摘要、推理、回复生成 | `claude-sonnet-4-6` |
-| 批量分类（降低成本） | `claude-haiku-4-5-20251001` |
+| `EmailSyncJob` | 每 5 分钟 | 从 Gmail / Graph 拉取新邮件 |
+| `DailySummaryJob` | 每天 08:00 | 生成每日摘要 |
+| `MemoryConsolidationJob` | 每天 00:00 | 压缩历史邮件记忆到 pgvector |
 
 ## 常用命令
 
@@ -215,13 +253,15 @@ docker-compose down -v && docker-compose up -d
 
 ## OAuth 配置指引
 
-**Gmail**
+### Gmail
+
 1. [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials → 创建 OAuth 2.0 客户端 ID（Web 应用）
 2. 授权回调 URI：`http://localhost:8080/api/v1/auth/gmail/callback`
 3. 启用 Gmail API（Library → Gmail API → Enable）
-4. OAuth consent screen → Test users 中添加测试账号
+4. OAuth 同意屏幕 → Test users 中添加测试账号
 
-**Microsoft Graph**
+### Microsoft Graph（Outlook）
+
 1. [Azure 门户](https://portal.azure.com) → App Registrations → New registration
 2. 重定向 URI：`http://localhost:8080/api/v1/auth/msgraph/callback`
 3. API Permissions → 添加 `Mail.Read`、`Mail.Send`、`Mail.ReadWrite`、`offline_access`
