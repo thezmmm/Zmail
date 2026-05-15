@@ -1,7 +1,7 @@
 package com.zmail.agent.node;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zmail.agent.EmailAgentState;
+import com.zmail.agent.DigestAgentState;
 import com.zmail.agent.SummaryResult;
 import com.zmail.email.EmailMeta;
 import com.zmail.email.EmailMessage;
@@ -25,7 +25,7 @@ import java.util.concurrent.Executor;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class SummarizeNode implements NodeAction<EmailAgentState> {
+public class SummarizeNode implements NodeAction<DigestAgentState> {
 
     @Qualifier("summarizeModel")
     private final ChatLanguageModel summarizeModel;
@@ -39,7 +39,7 @@ public class SummarizeNode implements NodeAction<EmailAgentState> {
     private static final int BODY_LIMIT = 4000;
 
     @Override
-    public Map<String, Object> apply(EmailAgentState state) throws Exception {
+    public Map<String, Object> apply(DigestAgentState state) throws Exception {
         UUID userId = state.userId();
         Map<String, EmailMeta> metaMap = state.emailMetaMap();
 
@@ -70,7 +70,7 @@ public class SummarizeNode implements NodeAction<EmailAgentState> {
 
         log.info("Summarized {} emails (parallel, pool≤{})", summaries.size(),
                 executor.toString());
-        return Map.of(EmailAgentState.SUMMARIES, summaries);
+        return Map.of(DigestAgentState.SUMMARIES, summaries);
     }
 
     private SummaryResult summarizeOne(UUID userId, EmailMeta meta) {
