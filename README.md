@@ -121,6 +121,23 @@ Zmail 采用三层 Agent 设计：
 - `draftEmailReply` — 通过 ActionAgent 起草回复
 - `askAboutEmail` — 通过 ActionAgent 回答关于某封邮件的问题
 
+#### 对话记忆管理（SessionMemoryManager）
+
+每条对话消息持久化到 PostgreSQL，同时通过 `SessionMemoryManager` 在 LangChain4j 侧维护一个**摘要 + 滑动窗口**的记忆层：
+
+```
+PostgreSQL（agent_messages）← 完整记录，永久保留
+         │
+         ▼  ensureSeeded（首次请求时）
+LangChain4j Memory = [SystemMessage: 历史摘要] + [最近 20 条消息]
+         │
+         ▼  maybeCompress（每次 ASSISTANT 回复后）
+若总消息数 > 30：用 gpt-4o-mini 将窗口外的旧消息压缩，写回 agent_sessions.summary
+```
+
+- 服务重启后首条消息自动从 DB 恢复上下文，LLM 不再失忆
+- 长会话不会因 token 超限截断，早期上下文以摘要形式保留
+
 ### DigestAgent（LangGraph4j 图）
 ```
 FetchSelected → Summarize（并发）→ GenerateDigest
@@ -206,8 +223,13 @@ zmail/
 │   ├── .env              # 本地凭据（gitignored）
 │   ├── .env.example      # 配置模板
 │   └── src/main/java/com/zmail/
-│       ├── agent/        # 多 Agent 实现（MainAgent / DigestAgent / ActionAgent）
-│       │   └── node/     # LangGraph4j 节点
+│       ├── agent/
+│       │   ├── action/   # ActionAgentService（起草回复、邮件问答）
+│       │   ├── chat/     # MainAgent、MainAgentService、MainAgentTools
+│       │   │             # SessionMemoryManager、ConversationSummaryAgent
+│       │   ├── digest/   # DigestAgentGraph、DigestAgentState
+│       │   │   └── node/ # FetchSelectedNode、SummarizeNode、GenerateDigestNode
+│       │   └── model/    # 共享数据类型（EmailRef、DigestResult 等）
 │       ├── config/       # Spring 配置（Security、LangChain4j、Agent 属性）
 │       ├── controller/   # REST 控制器（Auth / Chat / Session / Email）
 │       ├── email/        # EmailPort、GmailAdapter、MsGraphAdapter
@@ -224,6 +246,7 @@ zmail/
 |---|---|---|
 | 主对话（MainAgent） | `gpt-4o` | `zmail.agent.main-model` |
 | 邮件摘要 + 总览生成 | `gpt-4o` | `zmail.agent.summarize-model` |
+| 对话历史压缩 | `gpt-4o-mini` | `zmail.agent.compress-model` |
 | 批量分类（预留） | `gpt-4o-mini` | `zmail.agent.classify-model` |
 | Embedding | `text-embedding-3-small` | `zmail.embedding.model-name` |
 
