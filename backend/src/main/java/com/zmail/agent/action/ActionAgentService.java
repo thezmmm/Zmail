@@ -1,5 +1,6 @@
-package com.zmail.agent;
+package com.zmail.agent.action;
 
+import com.zmail.agent.model.EmailRef;
 import com.zmail.email.EmailMessage;
 import com.zmail.service.EmailService;
 import com.zmail.service.LlmRetryHelper;

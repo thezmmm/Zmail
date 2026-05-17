@@ -1,8 +1,10 @@
-package com.zmail.agent;
+package com.zmail.agent.digest;
 
-import com.zmail.agent.node.FetchSelectedNode;
-import com.zmail.agent.node.GenerateDigestNode;
-import com.zmail.agent.node.SummarizeNode;
+import com.zmail.agent.digest.node.FetchSelectedNode;
+import com.zmail.agent.digest.node.GenerateDigestNode;
+import com.zmail.agent.digest.node.SummarizeNode;
+import com.zmail.agent.model.DigestResult;
+import com.zmail.agent.model.EmailRef;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

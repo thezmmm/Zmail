@@ -1,4 +1,4 @@
-package com.zmail.agent;
+package com.zmail.agent.model;
 
 import java.util.UUID;
 

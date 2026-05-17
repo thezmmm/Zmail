@@ -1,7 +1,7 @@
-package com.zmail.agent.node;
+package com.zmail.agent.digest.node;
 
-import com.zmail.agent.DigestAgentState;
-import com.zmail.agent.EmailRef;
+import com.zmail.agent.digest.DigestAgentState;
+import com.zmail.agent.model.EmailRef;
 import com.zmail.email.EmailMeta;
 import com.zmail.email.EmailMessage;
 import com.zmail.service.EmailService;

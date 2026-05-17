@@ -1,7 +1,7 @@
 package com.zmail.model;
 
-import com.zmail.agent.ActionType;
-import com.zmail.agent.DraftStatus;
+import com.zmail.agent.model.ActionType;
+import com.zmail.agent.model.DraftStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

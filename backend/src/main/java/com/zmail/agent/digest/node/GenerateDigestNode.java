@@ -1,10 +1,10 @@
-package com.zmail.agent.node;
+package com.zmail.agent.digest.node;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zmail.agent.DigestAgentState;
-import com.zmail.agent.DigestResult;
-import com.zmail.agent.EmailDigest;
-import com.zmail.agent.SummaryResult;
+import com.zmail.agent.digest.DigestAgentState;
+import com.zmail.agent.model.DigestResult;
+import com.zmail.agent.model.EmailDigest;
+import com.zmail.agent.model.SummaryResult;
 import com.zmail.email.EmailMeta;
 import com.zmail.service.LlmRetryHelper;
 import dev.langchain4j.model.chat.ChatLanguageModel;

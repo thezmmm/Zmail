@@ -1,6 +1,6 @@
 package com.zmail.service;
 
-import com.zmail.agent.DraftStatus;
+import com.zmail.agent.model.DraftStatus;
 import com.zmail.email.EmailDraft;
 import com.zmail.model.ProcessingResult;
 import com.zmail.model.ProcessingResultRepository;

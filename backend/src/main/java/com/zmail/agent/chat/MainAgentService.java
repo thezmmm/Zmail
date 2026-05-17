@@ -1,4 +1,4 @@
-package com.zmail.agent;
+package com.zmail.agent.chat;
 
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;

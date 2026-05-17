@@ -1,5 +1,10 @@
-package com.zmail.agent;
+package com.zmail.agent.chat;
 
+import com.zmail.agent.action.ActionAgentService;
+import com.zmail.agent.digest.DigestAgentGraph;
+import com.zmail.agent.model.DigestResult;
+import com.zmail.agent.model.EmailDigest;
+import com.zmail.agent.model.EmailRef;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;

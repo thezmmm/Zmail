@@ -1,4 +1,4 @@
-package com.zmail.agent;
+package com.zmail.agent.chat;
 
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.TokenStream;

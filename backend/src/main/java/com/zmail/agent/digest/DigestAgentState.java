@@ -1,5 +1,8 @@
-package com.zmail.agent;
+package com.zmail.agent.digest;
 
+import com.zmail.agent.model.DigestResult;
+import com.zmail.agent.model.EmailRef;
+import com.zmail.agent.model.SummaryResult;
 import com.zmail.email.EmailMeta;
 import org.bsc.langgraph4j.state.AgentState;
 

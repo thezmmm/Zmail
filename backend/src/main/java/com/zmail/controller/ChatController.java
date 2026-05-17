@@ -1,8 +1,8 @@
 package com.zmail.controller;
 
-import com.zmail.agent.EmailRef;
-import com.zmail.agent.MainAgentService;
-import com.zmail.agent.MainAgentTools;
+import com.zmail.agent.model.EmailRef;
+import com.zmail.agent.chat.MainAgentService;
+import com.zmail.agent.chat.MainAgentTools;
 import com.zmail.model.AgentSession;
 import com.zmail.service.AgentSessionService;
 import lombok.RequiredArgsConstructor;
