@@ -52,11 +52,20 @@ public class MainAgentService {
         return mainAgent.chat(sessionId, message);
     }
 
-    /** Preload past messages into memory when resuming a session. */
-    public void seedMemory(String sessionId,
-                           java.util.List<dev.langchain4j.data.message.ChatMessage> history) {
+    /**
+     * Seeds LangChain4j memory for a session from persisted history.
+     * If a summary of older messages exists it is prepended as a system message
+     * so the LLM retains long-range context without receiving the full log.
+     */
+    public void seedMemory(String sessionId, String summary,
+                           java.util.List<dev.langchain4j.data.message.ChatMessage> recentMessages) {
         MessageWindowChatMemory mem = memories.computeIfAbsent(sessionId,
                 id -> MessageWindowChatMemory.builder().id(id).maxMessages(40).build());
-        history.forEach(mem::add);
+
+        if (summary != null && !summary.isBlank()) {
+            mem.add(dev.langchain4j.data.message.SystemMessage.from(
+                    "Summary of earlier conversation:\n" + summary));
+        }
+        recentMessages.forEach(mem::add);
     }
 }

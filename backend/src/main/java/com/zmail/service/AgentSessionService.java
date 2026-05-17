@@ -54,6 +54,17 @@ public class AgentSessionService {
     }
 
     @Transactional
+    public void updateSummary(UUID sessionId, String summary) {
+        AgentSession s = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+        s.setSummary(summary);
+    }
+
+    public int countMessages(UUID sessionId) {
+        return messageRepo.countBySessionId(sessionId);
+    }
+
+    @Transactional
     public void delete(UUID sessionId, UUID userId) {
         AgentSession s = getOrThrow(sessionId, userId);
         sessionRepo.delete(s);

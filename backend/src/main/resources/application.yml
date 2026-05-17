@@ -97,7 +97,10 @@ zmail:
     main-model: gpt-4o
     summarize-model: gpt-4o
     classify-model: gpt-4o-mini
+    compress-model: gpt-4o-mini
     max-emails-per-run: 50
+    memory-window-size: 20
+    memory-compress-threshold: 30
 
   scheduler:
     email-sync-cron: "0 */5 * * * *"

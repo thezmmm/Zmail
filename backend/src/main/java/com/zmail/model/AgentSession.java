@@ -29,6 +29,10 @@ public class AgentSession {
     @Column(nullable = false)
     private String title;
 
+    /** Compressed summary of messages outside the active window. Null until first compression. */
+    @Column(columnDefinition = "TEXT")
+    private String summary;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

@@ -47,6 +47,17 @@ public class LangChainConfig {
      * Pool size = maxParallelLlmCalls (default 5) → natural API concurrency cap.
      * Queue capacity absorbs bursts up to maxEmailsPerRun without rejection.
      */
+    @Bean("compressModel")
+    public ChatLanguageModel compressModel() {
+        return OpenAiChatModel.builder()
+                .baseUrl(agentProperties.getBaseUrl())
+                .apiKey(openAiApiKey)
+                .modelName(agentProperties.getCompressModel())
+                .maxTokens(1024)
+                .temperature(0.3)
+                .build();
+    }
+
     @Bean("mainModel")
     public OpenAiStreamingChatModel mainModel() {
         return OpenAiStreamingChatModel.builder()

@@ -14,7 +14,10 @@ public class AgentProperties {
     private String mainModel = "gpt-4o";
     private String summarizeModel = "gpt-4o";
     private String classifyModel = "gpt-4o-mini";
+    private String compressModel = "gpt-4o-mini";
     private int maxEmailsPerRun = 50;
+    private int memoryWindowSize = 20;
+    private int memoryCompressThreshold = 30;
     /** Minimum milliseconds between two agent runs for the same user (default 60 s). */
     private long minRunIntervalMs = 60_000;
     /** Max concurrent LLM calls per agent run (bounds API parallelism). */

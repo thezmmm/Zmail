@@ -1,0 +1,139 @@
+package com.zmail.agent.chat;
+
+import com.zmail.config.AgentProperties;
+import com.zmail.model.AgentMessage;
+import com.zmail.model.AgentSession;
+import com.zmail.model.AgentSessionRepository;
+import com.zmail.service.AgentSessionService;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.service.AiServices;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Bridges PostgreSQL message history with LangChain4j's in-memory chat memory.
+ *
+ * Responsibilities:
+ *  - ensureSeeded: on first access after JVM start, loads history from DB and seeds
+ *    the LangChain4j memory with summary (if any) + last WINDOW_SIZE messages.
+ *  - maybeCompress: after each assistant reply, checks whether total message count
+ *    exceeds COMPRESS_THRESHOLD and, if so, compresses the oldest messages into a
+ *    running summary stored back in agent_sessions.summary.
+ */
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class SessionMemoryManager {
+
+    @Qualifier("compressModel")
+    private final ChatLanguageModel compressModel;
+    private final MainAgentService mainAgentService;
+    private final AgentSessionService sessionService;
+    private final AgentSessionRepository sessionRepo;
+    private final AgentProperties props;
+
+    private final Set<String> seededSessions = ConcurrentHashMap.newKeySet();
+    private ConversationSummaryAgent summaryAgent;
+
+    @PostConstruct
+    void init() {
+        summaryAgent = AiServices.builder(ConversationSummaryAgent.class)
+                .chatLanguageModel(compressModel)
+                .build();
+    }
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Ensures this session's history is loaded into LangChain4j memory.
+     * Safe to call on every request — idempotent within a JVM lifetime.
+     */
+    public void ensureSeeded(UUID sessionId, UUID userId) {
+        if (seededSessions.contains(sessionId.toString())) return;
+
+        AgentSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+
+        List<AgentMessage> allMessages = sessionService.listMessages(sessionId, userId);
+        int total = allMessages.size();
+        int window = props.getMemoryWindowSize();
+
+        List<AgentMessage> recentMessages = total <= window
+                ? allMessages
+                : allMessages.subList(total - window, total);
+
+        List<ChatMessage> chatMessages = toChatMessages(recentMessages);
+        String summary = total <= window ? null : session.getSummary();
+
+        mainAgentService.seedMemory(sessionId.toString(), summary, chatMessages);
+        seededSessions.add(sessionId.toString());
+
+        log.info("Seeded session {} — {} messages loaded, summary={}",
+                sessionId, recentMessages.size(), summary != null ? "yes" : "no");
+    }
+
+    /**
+     * Checks whether the session needs compression and runs it if so.
+     * Called after each assistant message is persisted.
+     */
+    public void maybeCompress(UUID sessionId, UUID userId) {
+        int total = sessionService.countMessages(sessionId);
+        if (total <= props.getMemoryCompressThreshold()) return;
+
+        List<AgentMessage> allMessages = sessionService.listMessages(sessionId, userId);
+        int window = props.getMemoryWindowSize();
+        List<AgentMessage> toCompress = allMessages.subList(0, total - window);
+
+        AgentSession session = sessionRepo.findById(sessionId).orElseThrow();
+        String existing = session.getSummary();
+
+        String newSummary = compress(existing, toCompress);
+        sessionService.updateSummary(sessionId, newSummary);
+
+        log.info("Compressed {} messages for session {} (total={})",
+                toCompress.size(), sessionId, total);
+    }
+
+    // ── Internals ─────────────────────────────────────────────────────────────
+
+    private String compress(String existingSummary, List<AgentMessage> messages) {
+        StringBuilder sb = new StringBuilder();
+
+        if (existingSummary != null && !existingSummary.isBlank()) {
+            sb.append("=== Previous Summary ===\n")
+              .append(existingSummary)
+              .append("\n\n");
+        }
+
+        sb.append("=== Messages to incorporate ===\n");
+        for (AgentMessage m : messages) {
+            sb.append(m.getRole()).append(": ").append(m.getContent()).append("\n");
+        }
+
+        return summaryAgent.summarize(sb.toString());
+    }
+
+    private List<ChatMessage> toChatMessages(List<AgentMessage> messages) {
+        List<ChatMessage> result = new ArrayList<>(messages.size());
+        for (AgentMessage m : messages) {
+            if ("USER".equals(m.getRole())) {
+                result.add(UserMessage.from(m.getContent()));
+            } else {
+                result.add(AiMessage.from(m.getContent()));
+            }
+        }
+        return result;
+    }
+}

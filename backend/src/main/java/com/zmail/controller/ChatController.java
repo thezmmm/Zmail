@@ -1,5 +1,6 @@
 package com.zmail.controller;
 
+import com.zmail.agent.chat.SessionMemoryManager;
 import com.zmail.agent.model.EmailRef;
 import com.zmail.agent.chat.MainAgentService;
 import com.zmail.agent.chat.MainAgentTools;
@@ -25,6 +26,7 @@ public class ChatController {
     private final MainAgentService    mainAgentService;
     private final MainAgentTools      mainAgentTools;
     private final AgentSessionService sessionService;
+    private final SessionMemoryManager sessionMemoryManager;
 
     public record ChatRequest(
             String sessionId,
@@ -41,6 +43,9 @@ public class ChatController {
 
         // Validate session ownership
         AgentSession session = sessionService.getOrThrow(UUID.fromString(req.sessionId()), userId);
+
+        // Restore LangChain4j memory from DB if this session hasn't been seeded yet
+        sessionMemoryManager.ensureSeeded(session.getId(), userId);
 
         // Persist user message
         sessionService.appendMessage(session.getId(), "USER", req.message());
@@ -67,6 +72,7 @@ public class ChatController {
                     sessionService.appendMessage(session.getId(), "ASSISTANT",
                             assistantResponse.toString());
                     mainAgentTools.clearContext(req.sessionId());
+                    sessionMemoryManager.maybeCompress(session.getId(), userId);
                     try {
                         emitter.send(SseEmitter.event().name("done").data("[DONE]"));
                     } catch (IOException ignored) {}
