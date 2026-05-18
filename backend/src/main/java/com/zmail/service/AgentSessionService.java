@@ -60,6 +60,13 @@ public class AgentSessionService {
         s.setSummary(summary);
     }
 
+    @Transactional
+    public void updateCompressedUntil(UUID sessionId, int count) {
+        AgentSession s = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+        s.setCompressedUntil(count);
+    }
+
     public int countMessages(UUID sessionId) {
         return messageRepo.countBySessionId(sessionId);
     }

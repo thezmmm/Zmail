@@ -33,6 +33,10 @@ public class AgentSession {
     @Column(columnDefinition = "TEXT")
     private String summary;
 
+    /** Index of the first message NOT yet included in the summary (0 = nothing compressed). */
+    @Column(name = "compressed_until", nullable = false)
+    private int compressedUntil = 0;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

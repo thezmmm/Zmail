@@ -1,5 +1,6 @@
 package com.zmail.agent.chat;
 
+import com.zmail.config.AgentProperties;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.service.AiServices;
@@ -21,6 +22,7 @@ public class MainAgentService {
     @Qualifier("mainModel")
     private final OpenAiStreamingChatModel streamingModel;
     private final MainAgentTools tools;
+    private final AgentProperties agentProperties;
 
     private MainAgent mainAgent;
 
@@ -29,13 +31,16 @@ public class MainAgentService {
 
     @PostConstruct
     void init() {
+        // window + batchSize - 1 chat messages + ~5 system messages
+        int maxMessages = agentProperties.getMemoryWindowSize()
+                + agentProperties.getMemoryCompressBatchSize() + 5;
         mainAgent = AiServices.builder(MainAgent.class)
                 .streamingChatLanguageModel(streamingModel)
                 .chatMemoryProvider(memoryId -> memories.computeIfAbsent(
                         memoryId.toString(),
                         id -> MessageWindowChatMemory.builder()
                                 .id(id)
-                                .maxMessages(40)
+                                .maxMessages(maxMessages)
                                 .build()))
                 .tools(tools)
                 .systemMessageProvider(memoryId ->
@@ -59,8 +64,10 @@ public class MainAgentService {
      */
     public void seedMemory(String sessionId, String summary,
                            java.util.List<dev.langchain4j.data.message.ChatMessage> recentMessages) {
+        int maxMessages = agentProperties.getMemoryWindowSize()
+                + agentProperties.getMemoryCompressBatchSize() + 5;
         MessageWindowChatMemory mem = memories.computeIfAbsent(sessionId,
-                id -> MessageWindowChatMemory.builder().id(id).maxMessages(40).build());
+                id -> MessageWindowChatMemory.builder().id(id).maxMessages(maxMessages).build());
 
         if (summary != null && !summary.isBlank()) {
             mem.add(dev.langchain4j.data.message.SystemMessage.from(

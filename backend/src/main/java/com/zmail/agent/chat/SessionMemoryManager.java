@@ -45,6 +45,8 @@ public class SessionMemoryManager {
     private final AgentProperties props;
 
     private final Set<String> seededSessions = ConcurrentHashMap.newKeySet();
+    /** sessionId → total message count at the time of last compression. */
+    private final java.util.Map<String, Integer> lastCompressedTotal = new ConcurrentHashMap<>();
     private ConversationSummaryAgent summaryAgent;
 
     @PostConstruct
@@ -66,22 +68,22 @@ public class SessionMemoryManager {
         AgentSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
 
+        int compressedUntil = session.getCompressedUntil();
+        lastCompressedTotal.put(sessionId.toString(), compressedUntil);
+
         List<AgentMessage> allMessages = sessionService.listMessages(sessionId, userId);
-        int total = allMessages.size();
-        int window = props.getMemoryWindowSize();
-
-        List<AgentMessage> recentMessages = total <= window
+        // Pass everything from compressedUntil onward: uncompressed batch + active window
+        List<AgentMessage> toSeed = compressedUntil == 0
                 ? allMessages
-                : allMessages.subList(total - window, total);
+                : allMessages.subList(compressedUntil, allMessages.size());
 
-        List<ChatMessage> chatMessages = toChatMessages(recentMessages);
-        String summary = total <= window ? null : session.getSummary();
-
-        mainAgentService.seedMemory(sessionId.toString(), summary, chatMessages);
+        mainAgentService.seedMemory(sessionId.toString(), session.getSummary(),
+                toChatMessages(toSeed));
         seededSessions.add(sessionId.toString());
 
-        log.info("Seeded session {} — {} messages loaded, summary={}",
-                sessionId, recentMessages.size(), summary != null ? "yes" : "no");
+        log.info("Seeded session {} — {} messages (compressedUntil={}, summary={})",
+                sessionId, toSeed.size(), compressedUntil,
+                session.getSummary() != null ? "yes" : "no");
     }
 
     /**
@@ -90,20 +92,28 @@ public class SessionMemoryManager {
      */
     public void maybeCompress(UUID sessionId, UUID userId) {
         int total = sessionService.countMessages(sessionId);
-        if (total <= props.getMemoryCompressThreshold()) return;
+        int window = props.getMemoryWindowSize();
+        int batchSize = props.getMemoryCompressBatchSize();
+        int outsideWindow = total - window;
+        if (outsideWindow <= 0) return;
+
+        int compressedUntil = lastCompressedTotal.getOrDefault(sessionId.toString(), 0);
+        int newUncompressed = outsideWindow - compressedUntil;
+        if (newUncompressed < batchSize) return;
 
         List<AgentMessage> allMessages = sessionService.listMessages(sessionId, userId);
-        int window = props.getMemoryWindowSize();
-        List<AgentMessage> toCompress = allMessages.subList(0, total - window);
+        // Incremental: only the new batch, not messages already in the summary
+        List<AgentMessage> toCompress = allMessages.subList(compressedUntil, outsideWindow);
 
         AgentSession session = sessionRepo.findById(sessionId).orElseThrow();
-        String existing = session.getSummary();
+        String newSummary = compress(session.getSummary(), toCompress);
 
-        String newSummary = compress(existing, toCompress);
         sessionService.updateSummary(sessionId, newSummary);
+        sessionService.updateCompressedUntil(sessionId, outsideWindow);
+        lastCompressedTotal.put(sessionId.toString(), outsideWindow);
 
-        log.info("Compressed {} messages for session {} (total={})",
-                toCompress.size(), sessionId, total);
+        log.info("Compressed messages[{}..{}] for session {} (total={})",
+                compressedUntil, outsideWindow, sessionId, total);
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────
