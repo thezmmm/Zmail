@@ -123,20 +123,32 @@ Zmail 采用三层 Agent 设计：
 
 #### 对话记忆管理（SessionMemoryManager）
 
-每条对话消息持久化到 PostgreSQL，同时通过 `SessionMemoryManager` 在 LangChain4j 侧维护一个**摘要 + 滑动窗口**的记忆层：
+每条对话消息持久化到 PostgreSQL，同时通过 `SessionMemoryManager` 在 LangChain4j 侧维护一个**增量摘要 + 滑动窗口**的记忆层：
 
 ```
 PostgreSQL（agent_messages）← 完整记录，永久保留
-         │
-         ▼  ensureSeeded（首次请求时）
-LangChain4j Memory = [SystemMessage: 历史摘要] + [最近 20 条消息]
-         │
-         ▼  maybeCompress（每次 ASSISTANT 回复后）
-若总消息数 > 30：用 gpt-4o-mini 将窗口外的旧消息压缩，写回 agent_sessions.summary
+agent_sessions.compressed_until ← 已压缩到第几条（重启后恢复用）
+
+ensureSeeded（首次请求时）
+  └─ LangChain4j Memory = [SystemMessage: 历史摘要]
+                        + messages[compressed_until..end]
+                          （未压缩消息 + 活跃窗口，最多 49 条）
+
+maybeCompress（每次 ASSISTANT 回复后）
+  └─ 窗口外新增消息 >= batchSize(20) 时触发
+     → 仅压缩新增批次（增量），非全量重压缩
+     → compress(旧摘要, messages[compressed_until..outsideWindow])
+     → 更新 summary + compressed_until
 ```
 
-- 服务重启后首条消息自动从 DB 恢复上下文，LLM 不再失忆
-- 长会话不会因 token 超限截断，早期上下文以摘要形式保留
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `memory-window-size` | 30 | LLM 始终看到的最近 N 条消息（须为偶数） |
+| `memory-compress-batch-size` | 20 | 攒满 N 条再压缩（须为偶数，保证完整对话轮次） |
+
+- 服务重启后从 `compressed_until` 恢复，LLM 上下文不丢失
+- 每次压缩只送新批次消息，token 消耗恒定（O(1)，不随会话变长而增加）
+- `windowSize` 和 `batchSize` 必须为偶数，启动时自动校验
 
 ### DigestAgent（LangGraph4j 图）
 ```
@@ -224,7 +236,7 @@ zmail/
 │   ├── .env.example      # 配置模板
 │   └── src/main/java/com/zmail/
 │       ├── agent/
-│       │   ├── action/   # ActionAgentService（起草回复、邮件问答）
+│       │   ├── action/   # ActionAgentService、EmailProcessingAgent（邮件分析 AI Service）
 │       │   ├── chat/     # MainAgent、MainAgentService、MainAgentTools
 │       │   │             # SessionMemoryManager、ConversationSummaryAgent
 │       │   ├── digest/   # DigestAgentGraph、DigestAgentState
@@ -234,8 +246,8 @@ zmail/
 │       ├── controller/   # REST 控制器（Auth / Chat / Session / Email）
 │       ├── email/        # EmailPort、GmailAdapter、MsGraphAdapter
 │       ├── model/        # JPA 实体（User、AgentSession、AgentMessage 等）
-│       ├── scheduler/    # 定时任务
-│       └── service/      # 业务逻辑
+│       ├── scheduler/    # 定时任务（EmailSyncJob）
+│       └── service/      # 业务逻辑（含 EmailProcessingService）
 ├── docker-compose.yml
 └── CLAUDE.md
 ```
@@ -247,16 +259,33 @@ zmail/
 | 主对话（MainAgent） | `gpt-4o` | `zmail.agent.main-model` |
 | 邮件摘要 + 总览生成 | `gpt-4o` | `zmail.agent.summarize-model` |
 | 对话历史压缩 | `gpt-4o-mini` | `zmail.agent.compress-model` |
-| 批量分类（预留） | `gpt-4o-mini` | `zmail.agent.classify-model` |
+| 邮件同步处理（分类 + 摘要 + 行动决策） | `gpt-4o-mini` | `zmail.agent.classify-model` |
 | Embedding | `text-embedding-3-small` | `zmail.embedding.model-name` |
 
 ## 定时任务
 
-| 任务 | 触发时间 | 说明 |
-|---|---|---|
-| `EmailSyncJob` | 每 5 分钟 | 从 Gmail / Graph 拉取新邮件 |
-| `DailySummaryJob` | 每天 08:00 | 生成每日摘要 |
-| `MemoryConsolidationJob` | 每天 00:00 | 压缩历史邮件记忆到 pgvector |
+| 任务 | 触发时间 | 状态 | 说明 |
+|---|---|---|---|
+| `EmailSyncJob` | 每 5 分钟 | ✅ 已实现 | 拉取未读邮件 → 分类 / 摘要 / 行动决策（单次 LLM）→ 写 `processing_results` |
+| `DailySummaryJob` | 每天 08:00 | 🚧 待实现 | 聚合 `processing_results` 生成今日任务清单 |
+| `MemoryConsolidationJob` | 每天 00:00 | 🚧 待实现 | 压缩历史邮件记忆到 pgvector |
+
+### EmailSyncJob 处理流程
+
+```
+fetchUnread()（Gmail / Graph）
+    │
+    ├─ 已存在 processing_results → 跳过
+    │
+    └─ 新邮件 → EmailProcessingAgent（gpt-4o-mini，单次调用）
+                  输出：category / priority / sentiment /
+                        requiresResponse / summary / actionItems / recommendedAction
+                  │
+                  ├─ REPLY   → ActionAgentService.draftReply() → draftStatus=PENDING_REVIEW
+                  ├─ ARCHIVE → GmailAdapter / MsGraphAdapter.archive()
+                  ├─ FLAG    → GmailAdapter / MsGraphAdapter.flag()
+                  └─ NONE    → 仅存记录
+```
 
 ## 常用命令
 
