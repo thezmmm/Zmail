@@ -2,6 +2,7 @@ package com.zmail.controller;
 
 import com.zmail.model.EmailProvider;
 import com.zmail.model.User;
+import com.zmail.service.InitialSyncService;
 import com.zmail.service.JwtService;
 import com.zmail.service.UserService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -40,6 +41,7 @@ public class AuthController {
     private final UserService userService;
     private final JwtService jwtService;
     private final RestTemplate restTemplate;
+    private final InitialSyncService initialSyncService;
 
     @Value("${zmail.gmail.redirect-uri}")
     private String gmailRedirectUri;
@@ -125,6 +127,7 @@ public class AuthController {
         User user = userService.findOrCreate(email, name);
         userService.upsertEmailAccount(user, EmailProvider.GMAIL, email,
                 accessToken, refreshToken, tokenExpiry);
+        initialSyncService.triggerAsync(user.getId());
 
         String jwt = jwtService.generateToken(user.getId().toString());
         log.info("Gmail OAuth2 completed for {}", email);
@@ -219,6 +222,7 @@ public class AuthController {
         User user = userService.findOrCreate(email, name);
         userService.upsertEmailAccount(user, EmailProvider.MSGRAPH, email,
                 accessToken, refreshToken, tokenExpiry);
+        initialSyncService.triggerAsync(user.getId());
 
         String jwt = jwtService.generateToken(user.getId().toString());
         log.info("MS Graph OAuth2 completed for {}", email);

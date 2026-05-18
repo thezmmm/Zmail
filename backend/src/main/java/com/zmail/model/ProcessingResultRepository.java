@@ -11,6 +11,8 @@ import java.util.UUID;
 
 public interface ProcessingResultRepository extends JpaRepository<ProcessingResult, UUID> {
 
+    boolean existsByUserIdAndEmailProviderId(UUID userId, String emailProviderId);
+
     Page<ProcessingResult> findByUserIdOrderByProcessedAtDesc(UUID userId, Pageable pageable);
 
     /** Latest row for a given (user, email) pair — used by ReplyNode to update its draft. */

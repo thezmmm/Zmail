@@ -5,6 +5,7 @@ import com.zmail.model.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -23,6 +24,14 @@ public class EmailService {
         return emailAccountRepository.findAllByUser(user).stream()
                 .flatMap(account -> getAdapter(account.getProvider())
                         .fetchUnread(account, maxResults).stream())
+                .collect(Collectors.toList());
+    }
+
+    public List<EmailMessage> fetchRecent(UUID userId, int maxResults, OffsetDateTime since) {
+        User user = findUser(userId);
+        return emailAccountRepository.findAllByUser(user).stream()
+                .flatMap(account -> getAdapter(account.getProvider())
+                        .fetchRecent(account, maxResults, since).stream())
                 .collect(Collectors.toList());
     }
 
