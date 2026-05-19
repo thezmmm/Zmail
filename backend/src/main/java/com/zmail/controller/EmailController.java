@@ -44,6 +44,16 @@ public class EmailController {
         return ResponseEntity.ok(ApiResponse.ok());
     }
 
+    @PostMapping("/{messageId}/flag")
+    public ResponseEntity<ApiResponse<Void>> flag(
+            @PathVariable String messageId,
+            @RequestParam UUID accountId,
+            Authentication auth) {
+        UUID userId = UUID.fromString(auth.getName());
+        emailService.flag(userId, accountId, messageId);
+        return ResponseEntity.ok(ApiResponse.ok());
+    }
+
     @PostMapping("/{messageId}/read")
     public ResponseEntity<ApiResponse<Void>> markRead(
             @PathVariable String messageId,
@@ -52,6 +62,16 @@ public class EmailController {
         UUID userId = UUID.fromString(auth.getName());
         emailService.markRead(userId, accountId, messageId);
         return ResponseEntity.ok(ApiResponse.ok());
+    }
+
+    @GetMapping("/{messageId}")
+    public ResponseEntity<ApiResponse<EmailMessage>> getById(
+            @PathVariable String messageId,
+            @RequestParam UUID accountId,
+            Authentication auth) {
+        UUID userId = UUID.fromString(auth.getName());
+        return ResponseEntity.ok(ApiResponse.ok(
+                emailService.fetchById(userId, accountId, messageId)));
     }
 
     @PostMapping("/send")

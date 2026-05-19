@@ -33,14 +33,19 @@ public class DraftService {
         ProcessingResult result = load(userId, draftId);
         require(result, DraftStatus.PENDING_REVIEW);
 
+        result.setDraftStatus(DraftStatus.SENT);
+        // saveAndFlush forces an immediate SQL UPDATE (with the @Version WHERE clause) before
+        // the email is sent. If a concurrent request already committed its update, the version
+        // will have changed and Spring throws ObjectOptimisticLockingFailureException here,
+        // rolling back the transaction without sending the email.
+        repository.saveAndFlush(result);
+
         EmailDraft draft = new EmailDraft(
                 List.of(result.getSender()),
                 "Re: " + result.getSubject(),
                 result.getReplyDraft());
 
         emailService.send(userId, result.getAccountId(), draft);
-
-        result.setDraftStatus(DraftStatus.SENT);
         log.info("Draft {} approved and sent for user {}", draftId, userId);
     }
 
