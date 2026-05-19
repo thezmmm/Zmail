@@ -165,6 +165,12 @@ FetchSelected → Summarize（并发）→ GenerateDigest
 
 响应格式统一为 `{ "data": ..., "error": null, "timestamp": "..." }`
 
+### 用户
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/users/me` | 当前登录用户信息（id、email、name） |
+
 ### 认证
 
 | 方法 | 路径 | 说明 |
@@ -173,6 +179,25 @@ FetchSelected → Summarize（并发）→ GenerateDigest
 | `GET` | `/auth/gmail/callback` | Gmail OAuth2 回调 |
 | `GET` | `/auth/msgraph/login` | 发起 Microsoft OAuth2 授权 |
 | `GET` | `/auth/msgraph/callback` | Microsoft OAuth2 回调 |
+
+### 邮件处理结果
+
+AI 同步处理完的邮件存在 `processing_results` 表，是前端主收件箱视图的主要数据来源。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/results?page=0&size=20` | 分页获取当前用户所有处理结果，按处理时间倒序 |
+| `GET` | `/results/{id}` | 获取单条处理结果详情 |
+
+处理结果包含字段：`category`、`priority`、`sentiment`、`summary`、`actionItems`、`actionTaken`、`draftStatus`、`replyDraft` 等。
+
+### 草稿管理
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/drafts/pending?page=0&size=20` | 待审批的 AI 回复草稿列表 |
+| `POST` | `/drafts/{id}/approve` | 审批通过并发送邮件（幂等，重复请求返回 409） |
+| `POST` | `/drafts/{id}/reject` | 拒绝草稿 |
 
 ### Agent 对话
 
@@ -213,11 +238,25 @@ Authorization: Bearer <token>
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/emails?maxResults=20` | 获取所有账号未读邮件 |
-| `GET` | `/emails/accounts` | 列出已连接的邮件账号 |
+| `GET` | `/emails?maxResults=20` | 获取所有账号未读邮件原始列表 |
+| `GET` | `/emails/{id}?accountId=` | 获取单封邮件原文 |
+| `GET` | `/emails/accounts` | 列出已连接的邮件账号（含 `needsReauth` 字段） |
 | `POST` | `/emails/{id}/archive?accountId=` | 归档邮件 |
+| `POST` | `/emails/{id}/flag?accountId=` | 标记邮件为待办 |
 | `POST` | `/emails/{id}/read?accountId=` | 标为已读 |
 | `POST` | `/emails/send` | 发送邮件 |
+
+#### OAuth Token 自动刷新
+
+后端每次访问邮件账号前会检查 access token 是否在 5 分钟内过期，到期则自动用 refresh token 换取新令牌（Microsoft 会同时返回新 refresh token，后端会一并保存）。**正常情况下用户无需重新登录邮箱账号。**
+
+若 refresh token 本身失效（长期未使用、用户在 Google/Azure 侧手动撤销授权），后端会将该账号标记为 `needsReauth: true` 并停止对其同步，不影响其他账号。前端可通过 `GET /emails/accounts` 检测该字段并提示用户重新授权：
+
+```json
+{ "id": "...", "provider": "GMAIL", "accountEmail": "...", "needsReauth": true }
+```
+
+用户重新完成 OAuth 流程后，`needsReauth` 自动清除，同步恢复正常。
 
 ## 项目结构
 
@@ -273,7 +312,7 @@ zmail/
 ### EmailSyncJob 处理流程
 
 ```
-fetchUnread()（Gmail / Graph）
+fetchUnread()（Gmail / Graph，跳过 needsReauth 账号）
     │
     ├─ 已存在 processing_results → 跳过
     │
@@ -286,6 +325,8 @@ fetchUnread()（Gmail / Graph）
                   ├─ FLAG    → GmailAdapter / MsGraphAdapter.flag()
                   └─ NONE    → 仅存记录
 ```
+
+**与 InitialSyncService 的关系**：用户首次 OAuth 授权后，`InitialSyncService` 会异步拉取最近 3 天的邮件并批量处理（走 `agentExecutor` 线程池，不经过 `RunGuard`）。5 分钟后 `EmailSyncJob` 触发时，因为初始同步没有设置 `RunGuard` 的 cooldown，定时任务可以正常运行，不会被跳过。
 
 ## 常用命令
 
