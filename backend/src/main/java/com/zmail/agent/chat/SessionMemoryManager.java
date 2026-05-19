@@ -97,23 +97,41 @@ public class SessionMemoryManager {
         int outsideWindow = total - window;
         if (outsideWindow <= 0) return;
 
-        int compressedUntil = lastCompressedTotal.getOrDefault(sessionId.toString(), 0);
+        // Fall back to the DB value when the in-memory map has no entry (e.g. after a JVM restart
+        // where ensureSeeded failed mid-way, leaving compressedUntil uninitialized in this map).
+        int compressedUntil = lastCompressedTotal.computeIfAbsent(
+                sessionId.toString(),
+                id -> sessionRepo.findById(sessionId)
+                        .map(AgentSession::getCompressedUntil)
+                        .orElse(0));
+
         int newUncompressed = outsideWindow - compressedUntil;
         if (newUncompressed < batchSize) return;
 
         List<AgentMessage> allMessages = sessionService.listMessages(sessionId, userId);
-        // Incremental: only the new batch, not messages already in the summary
-        List<AgentMessage> toCompress = allMessages.subList(compressedUntil, outsideWindow);
+        // Use the actual list size as the upper bound: countMessages() and listMessages() are two
+        // separate queries with no shared transaction, so allMessages.size() may be smaller than
+        // outsideWindow if messages were deleted between the two calls.
+        int safeEnd = Math.min(outsideWindow, allMessages.size());
+        if (safeEnd <= compressedUntil) return;
+
+        List<AgentMessage> toCompress = allMessages.subList(compressedUntil, safeEnd);
 
         AgentSession session = sessionRepo.findById(sessionId).orElseThrow();
         String newSummary = compress(session.getSummary(), toCompress);
 
         sessionService.updateSummary(sessionId, newSummary);
-        sessionService.updateCompressedUntil(sessionId, outsideWindow);
-        lastCompressedTotal.put(sessionId.toString(), outsideWindow);
+        sessionService.updateCompressedUntil(sessionId, safeEnd);
+        lastCompressedTotal.put(sessionId.toString(), safeEnd);
 
         log.info("Compressed messages[{}..{}] for session {} (total={})",
-                compressedUntil, outsideWindow, sessionId, total);
+                compressedUntil, safeEnd, sessionId, total);
+    }
+
+    public void evict(UUID sessionId) {
+        String key = sessionId.toString();
+        seededSessions.remove(key);
+        lastCompressedTotal.remove(key);
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────

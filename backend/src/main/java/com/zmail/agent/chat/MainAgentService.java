@@ -57,6 +57,10 @@ public class MainAgentService {
         return mainAgent.chat(sessionId, message);
     }
 
+    public void evict(String sessionId) {
+        memories.remove(sessionId);
+    }
+
     /**
      * Seeds LangChain4j memory for a session from persisted history.
      * If a summary of older messages exists it is prepended as a system message

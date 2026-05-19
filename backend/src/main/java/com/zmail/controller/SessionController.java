@@ -1,5 +1,7 @@
 package com.zmail.controller;
 
+import com.zmail.agent.chat.MainAgentService;
+import com.zmail.agent.chat.SessionMemoryManager;
 import com.zmail.model.AgentMessage;
 import com.zmail.model.AgentSession;
 import com.zmail.model.ApiResponse;
@@ -19,6 +21,8 @@ import java.util.UUID;
 public class SessionController {
 
     private final AgentSessionService sessionService;
+    private final MainAgentService mainAgentService;
+    private final SessionMemoryManager sessionMemoryManager;
 
     public record CreateSessionRequest(String title) {}
 
@@ -60,6 +64,8 @@ public class SessionController {
             @PathVariable UUID sessionId, Authentication auth) {
         UUID userId = UUID.fromString(auth.getName());
         sessionService.delete(sessionId, userId);
+        mainAgentService.evict(sessionId.toString());
+        sessionMemoryManager.evict(sessionId);
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
