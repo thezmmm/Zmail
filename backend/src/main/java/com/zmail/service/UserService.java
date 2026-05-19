@@ -35,6 +35,7 @@ public class UserService {
                     account.setAccessToken(accessToken);
                     account.setRefreshToken(refreshToken);
                     account.setTokenExpiry(tokenExpiry);
+                    account.setNeedsReauth(false);
                     return emailAccountRepository.save(account);
                 })
                 .orElseGet(() -> {

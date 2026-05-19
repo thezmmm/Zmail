@@ -3,6 +3,7 @@ package com.zmail.service;
 import com.zmail.email.*;
 import com.zmail.model.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -12,6 +13,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EmailService {
 
     private final UserRepository userRepository;
@@ -22,6 +24,7 @@ public class EmailService {
     public List<EmailMessage> fetchUnread(UUID userId, int maxResults) {
         User user = findUser(userId);
         return emailAccountRepository.findAllByUser(user).stream()
+                .filter(this::isAccessible)
                 .flatMap(account -> getAdapter(account.getProvider())
                         .fetchUnread(account, maxResults).stream())
                 .collect(Collectors.toList());
@@ -30,9 +33,20 @@ public class EmailService {
     public List<EmailMessage> fetchRecent(UUID userId, int maxResults, OffsetDateTime since) {
         User user = findUser(userId);
         return emailAccountRepository.findAllByUser(user).stream()
+                .filter(this::isAccessible)
                 .flatMap(account -> getAdapter(account.getProvider())
                         .fetchRecent(account, maxResults, since).stream())
                 .collect(Collectors.toList());
+    }
+
+    /** Accounts flagged as needing re-authorization are excluded from background fetch operations. */
+    private boolean isAccessible(EmailAccount account) {
+        if (account.isNeedsReauth()) {
+            log.warn("Skipping account {} ({}) — needs re-authorization",
+                    account.getId(), account.getAccountEmail());
+            return false;
+        }
+        return true;
     }
 
     public List<EmailAccount> getAccounts(UUID userId) {

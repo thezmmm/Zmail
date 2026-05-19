@@ -45,6 +45,10 @@ public class EmailAccount {
     @Column(name = "token_expiry")
     private OffsetDateTime tokenExpiry;
 
+    /** True when the stored refresh token is invalid or revoked; requires user to re-authorize. */
+    @Column(name = "needs_reauth", nullable = false)
+    private boolean needsReauth = false;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

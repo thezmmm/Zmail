@@ -4,6 +4,7 @@ import com.zmail.model.EmailProvider;
 import com.zmail.model.User;
 import com.zmail.service.InitialSyncService;
 import com.zmail.service.JwtService;
+import com.zmail.service.OAuthStateStore;
 import com.zmail.service.UserService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +26,6 @@ import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping("/auth")
@@ -42,6 +41,7 @@ public class AuthController {
     private final JwtService jwtService;
     private final RestTemplate restTemplate;
     private final InitialSyncService initialSyncService;
+    private final OAuthStateStore stateStore;
 
     @Value("${zmail.gmail.redirect-uri}")
     private String gmailRedirectUri;
@@ -52,16 +52,12 @@ public class AuthController {
     @Value("${zmail.frontend-url}")
     private String frontendUrl;
 
-    // state -> expiry timestamp (ms). TODO: replace with Redis for multi-instance deployments
-    private final Map<String, Long> pendingStates = new ConcurrentHashMap<>();
-
     // ── Gmail ──────────────────────────────────────────────────────────────────
 
     @GetMapping("/gmail/login")
     public void initiateGmailLogin(HttpServletResponse response) throws IOException {
         ClientRegistration google = clientRegistrationRepository.findByRegistrationId("google");
-        String state = UUID.randomUUID().toString().replace("-", "");
-        pendingStates.put(state, System.currentTimeMillis() + 600_000L);
+        String state = stateStore.generate();
 
         String authUri = UriComponentsBuilder
                 .fromHttpUrl(google.getProviderDetails().getAuthorizationUri())
@@ -81,8 +77,7 @@ public class AuthController {
     public void handleGmailCallback(@RequestParam String code,
                                     @RequestParam String state,
                                     HttpServletResponse response) throws IOException {
-        Long expiry = pendingStates.remove(state);
-        if (expiry == null || expiry < System.currentTimeMillis()) {
+        if (!stateStore.consume(state)) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid or expired OAuth2 state");
             return;
         }
@@ -139,8 +134,7 @@ public class AuthController {
     @GetMapping("/msgraph/login")
     public void initiateMsgraphLogin(HttpServletResponse response) throws IOException {
         ClientRegistration microsoft = clientRegistrationRepository.findByRegistrationId("microsoft");
-        String state = UUID.randomUUID().toString().replace("-", "");
-        pendingStates.put(state, System.currentTimeMillis() + 600_000L);
+        String state = stateStore.generate();
 
         String authUri = UriComponentsBuilder
                 .fromHttpUrl(microsoft.getProviderDetails().getAuthorizationUri())
@@ -159,8 +153,7 @@ public class AuthController {
     public void handleMsgraphCallback(@RequestParam String code,
                                       @RequestParam String state,
                                       HttpServletResponse response) throws IOException {
-        Long expiry = pendingStates.remove(state);
-        if (expiry == null || expiry < System.currentTimeMillis()) {
+        if (!stateStore.consume(state)) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid or expired OAuth2 state");
             return;
         }
