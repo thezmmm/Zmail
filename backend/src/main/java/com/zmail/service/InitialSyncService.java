@@ -25,7 +25,7 @@ public class InitialSyncService {
      * Triggered asynchronously after a user connects an email account.
      * Fetches and processes the last INITIAL_SYNC_DAYS days of emails in parallel.
      */
-    @Async
+    @Async("agentExecutor")
     public void triggerAsync(UUID userId) {
         OffsetDateTime since = OffsetDateTime.now().minusDays(INITIAL_SYNC_DAYS);
         log.info("InitialSync started for user {} (last {} days)", userId, INITIAL_SYNC_DAYS);

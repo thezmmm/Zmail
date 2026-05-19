@@ -38,6 +38,11 @@ public class EmailSyncJob {
     }
 
     private void syncUser(UUID userId) {
+        // RunGuard enforces a 60-second cooldown (minRunIntervalMs) after each release().
+        // InitialSyncService.triggerAsync() calls processBatch() directly and does NOT
+        // go through RunGuard, so it never sets lastRunAt. The first scheduled run after
+        // initial sync will therefore always succeed — the cooldown only kicks in once
+        // EmailSyncJob itself has completed at least one run for this user.
         try {
             runGuard.acquire(userId);
         } catch (IllegalStateException e) {
