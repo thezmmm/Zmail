@@ -176,9 +176,12 @@ FetchSelected → Summarize（并发）→ GenerateDigest
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/auth/gmail/login` | 发起 Gmail OAuth2 授权 |
-| `GET` | `/auth/gmail/callback` | Gmail OAuth2 回调 |
+| `GET` | `/auth/gmail/callback` | Gmail OAuth2 回调，返回 JWT |
 | `GET` | `/auth/msgraph/login` | 发起 Microsoft OAuth2 授权 |
-| `GET` | `/auth/msgraph/callback` | Microsoft OAuth2 回调 |
+| `GET` | `/auth/msgraph/callback` | Microsoft OAuth2 回调，返回 JWT |
+| `POST` | `/auth/token/refresh` | 用当前有效 JWT 换取新 JWT（无需重走 OAuth） |
+
+> **JWT 续期建议**：前端解析 JWT payload 的 `exp` 字段，在过期前 5 分钟调用 `/auth/token/refresh` 静默续期，避免用户感知到登录中断。JWT 过期后该接口不可用，需重走 OAuth。
 
 ### 邮件处理结果
 
@@ -234,29 +237,49 @@ Authorization: Bearer <token>
 | `token` | 文本片段 | LLM 流式输出的增量 token |
 | `done` | `[DONE]` | 流结束 |
 
+### 账号管理
+
+一个用户可绑定多个邮件账号（多个 Gmail、多个 Outlook 均支持）。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/accounts` | 列出当前用户所有已绑定邮件账号 |
+| `DELETE` | `/accounts/{id}` | 移除一个绑定账号（邮件处理历史保留） |
+| `GET` | `/accounts/{id}/reauth` | 获取该账号的 OAuth 重授权 URL |
+| `GET` | `/accounts/sync-status` | 查询初始同步状态（`RUNNING` / `DONE` / `FAILED`） |
+
+`GET /accounts` 返回字段：
+
+```json
+{
+  "id": "uuid",
+  "provider": "GMAIL",
+  "accountEmail": "user@gmail.com",
+  "needsReauth": false,
+  "createdAt": "2026-05-20T10:00:00Z"
+}
+```
+
+#### OAuth Token 自动刷新
+
+后端每次访问邮件账号前会检查 access token 是否在 5 分钟内过期，到期则自动用 refresh token 换取新令牌（Microsoft 会同时返回新 refresh token，后端会一并保存）。**正常情况下用户无需重新登录邮箱账号。**
+
+若 refresh token 本身失效（长期未使用、用户在 Google/Azure 侧手动撤销授权），后端会将该账号标记为 `needsReauth: true` 并停止对其同步，不影响其他账号。前端可通过 `GET /accounts` 检测该字段并提示用户重新授权：
+
+1. 调用 `GET /accounts/{id}/reauth` 获取 `loginPath`
+2. 通过 Tauri `shell.open()` 在浏览器中打开完整 OAuth URL
+3. OAuth 完成后 `needsReauth` 自动清除，同步恢复正常
+
 ### 邮件
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/emails?maxResults=20` | 获取所有账号未读邮件原始列表 |
 | `GET` | `/emails/{id}?accountId=` | 获取单封邮件原文 |
-| `GET` | `/emails/accounts` | 列出已连接的邮件账号（含 `needsReauth` 字段） |
 | `POST` | `/emails/{id}/archive?accountId=` | 归档邮件 |
 | `POST` | `/emails/{id}/flag?accountId=` | 标记邮件为待办 |
 | `POST` | `/emails/{id}/read?accountId=` | 标为已读 |
-| `POST` | `/emails/send` | 发送邮件 |
-
-#### OAuth Token 自动刷新
-
-后端每次访问邮件账号前会检查 access token 是否在 5 分钟内过期，到期则自动用 refresh token 换取新令牌（Microsoft 会同时返回新 refresh token，后端会一并保存）。**正常情况下用户无需重新登录邮箱账号。**
-
-若 refresh token 本身失效（长期未使用、用户在 Google/Azure 侧手动撤销授权），后端会将该账号标记为 `needsReauth: true` 并停止对其同步，不影响其他账号。前端可通过 `GET /emails/accounts` 检测该字段并提示用户重新授权：
-
-```json
-{ "id": "...", "provider": "GMAIL", "accountEmail": "...", "needsReauth": true }
-```
-
-用户重新完成 OAuth 流程后，`needsReauth` 自动清除，同步恢复正常。
+| `POST` | `/emails/send` | 发送邮件（`to`、`subject`、`body` 均必填） |
 
 ## 项目结构
 
