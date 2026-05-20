@@ -13,6 +13,7 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/.turbo/
+*.tsbuildinfo
 
 # Tauri build outputs
 frontend/src-tauri/target/
