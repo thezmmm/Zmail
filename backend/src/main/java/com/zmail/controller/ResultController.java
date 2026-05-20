@@ -28,6 +28,9 @@ public class ResultController {
     public ResponseEntity<ApiResponse<Page<ProcessingResult>>> list(
             Authentication auth,
             @PageableDefault(size = 20, sort = "processedAt") Pageable pageable) {
+        if (pageable.getPageNumber() < 0 || pageable.getPageSize() < 1) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Invalid pagination: page >= 0 and size >= 1 required"));
+        }
         UUID userId = UUID.fromString(auth.getName());
         return ResponseEntity.ok(ApiResponse.ok(
                 repository.findByUserIdOrderByProcessedAtDesc(userId, pageable)));

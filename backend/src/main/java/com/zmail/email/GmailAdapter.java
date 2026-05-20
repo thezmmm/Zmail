@@ -146,7 +146,14 @@ public class GmailAdapter implements EmailPort {
     }
 
     private EmailMessage toEmailMessage(Message message, UUID accountId) {
-        List<MessagePartHeader> headers = message.getPayload().getHeaders();
+        MessagePart payload = message.getPayload();
+        if (payload == null) {
+            return new EmailMessage(message.getId(), accountId, "", "", List.of(),
+                    OffsetDateTime.ofInstant(Instant.ofEpochMilli(
+                            message.getInternalDate() != null ? message.getInternalDate() : 0L),
+                            ZoneId.systemDefault()), "");
+        }
+        List<MessagePartHeader> headers = payload.getHeaders() != null ? payload.getHeaders() : List.of();
         return new EmailMessage(
                 message.getId(),
                 accountId,
@@ -156,7 +163,7 @@ public class GmailAdapter implements EmailPort {
                 OffsetDateTime.ofInstant(
                         Instant.ofEpochMilli(message.getInternalDate()),
                         ZoneId.systemDefault()),
-                extractBody(message.getPayload())
+                extractBody(payload)
         );
     }
 

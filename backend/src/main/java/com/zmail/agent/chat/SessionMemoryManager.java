@@ -63,7 +63,7 @@ public class SessionMemoryManager {
      * Safe to call on every request — idempotent within a JVM lifetime.
      */
     public void ensureSeeded(UUID sessionId, UUID userId) {
-        if (seededSessions.contains(sessionId.toString())) return;
+        if (!seededSessions.add(sessionId.toString())) return;
 
         AgentSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
@@ -79,7 +79,6 @@ public class SessionMemoryManager {
 
         mainAgentService.seedMemory(sessionId.toString(), session.getSummary(),
                 toChatMessages(toSeed));
-        seededSessions.add(sessionId.toString());
 
         log.info("Seeded session {} — {} messages (compressedUntil={}, summary={})",
                 sessionId, toSeed.size(), compressedUntil,

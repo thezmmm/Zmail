@@ -1,5 +1,6 @@
 package com.zmail.controller;
 
+import com.zmail.model.ApiResponse;
 import com.zmail.model.EmailProvider;
 import com.zmail.model.User;
 import com.zmail.service.InitialSyncService;
@@ -22,6 +23,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.security.core.Authentication;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.Base64;
@@ -110,7 +112,8 @@ public class AuthController {
         Map<String, Object> tokenData = tokenResp.getBody();
         String accessToken  = (String) tokenData.get("access_token");
         String refreshToken = (String) tokenData.get("refresh_token");
-        long expiresIn      = ((Number) tokenData.get("expires_in")).longValue();
+        Number expiresInNum = (Number) tokenData.get("expires_in");
+        long expiresIn      = expiresInNum != null ? expiresInNum.longValue() : 3600L;
         OffsetDateTime tokenExpiry = OffsetDateTime.now().plusSeconds(expiresIn);
 
         // Parse user info from id_token JWT payload — avoids a second HTTP call
@@ -186,7 +189,8 @@ public class AuthController {
         Map<String, Object> tokenData = tokenResp.getBody();
         String accessToken  = (String) tokenData.get("access_token");
         String refreshToken = (String) tokenData.get("refresh_token");
-        long expiresIn      = ((Number) tokenData.get("expires_in")).longValue();
+        Number expiresInNum = (Number) tokenData.get("expires_in");
+        long expiresIn      = expiresInNum != null ? expiresInNum.longValue() : 3600L;
         OffsetDateTime tokenExpiry = OffsetDateTime.now().plusSeconds(expiresIn);
 
         // Fetch user profile from MS Graph
@@ -220,6 +224,20 @@ public class AuthController {
         String jwt = jwtService.generateToken(user.getId().toString());
         log.info("MS Graph OAuth2 completed for {}", email);
         response.sendRedirect(frontendUrl + "/auth/callback?token=" + jwt + "&provider=msgraph");
+    }
+
+    // ── Token refresh ─────────────────────────────────────────────────────────
+
+    /**
+     * Issues a new JWT for the currently authenticated user without re-running OAuth.
+     * The caller must present a still-valid JWT; this endpoint is not reachable once
+     * the token has already expired. Frontends should call this proactively (e.g. when
+     * the stored token has less than 5 minutes remaining).
+     */
+    @PostMapping("/token/refresh")
+    public ResponseEntity<ApiResponse<String>> refreshToken(Authentication auth) {
+        String newToken = jwtService.generateToken(auth.getName());
+        return ResponseEntity.ok(ApiResponse.ok(newToken));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
