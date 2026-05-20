@@ -3,8 +3,10 @@ package com.zmail.controller;
 import com.zmail.email.EmailDraft;
 import com.zmail.email.EmailMessage;
 import com.zmail.model.ApiResponse;
-import com.zmail.model.EmailAccount;
 import com.zmail.service.EmailService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -26,12 +28,6 @@ public class EmailController {
             @RequestParam(defaultValue = "20") int maxResults) {
         UUID userId = UUID.fromString(auth.getName());
         return ResponseEntity.ok(ApiResponse.ok(emailService.fetchUnread(userId, maxResults)));
-    }
-
-    @GetMapping("/accounts")
-    public ResponseEntity<ApiResponse<List<EmailAccount>>> getAccounts(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
-        return ResponseEntity.ok(ApiResponse.ok(emailService.getAccounts(userId)));
     }
 
     @PostMapping("/{messageId}/archive")
@@ -76,7 +72,7 @@ public class EmailController {
 
     @PostMapping("/send")
     public ResponseEntity<ApiResponse<Void>> send(
-            @RequestBody SendRequest req,
+            @Valid @RequestBody SendRequest req,
             Authentication auth) {
         UUID userId = UUID.fromString(auth.getName());
         emailService.send(userId, req.accountId(),
@@ -84,5 +80,10 @@ public class EmailController {
         return ResponseEntity.ok(ApiResponse.ok());
     }
 
-    record SendRequest(UUID accountId, List<String> to, String subject, String body) {}
+    record SendRequest(
+            UUID accountId,
+            @NotEmpty(message = "At least one recipient is required") List<String> to,
+            @NotBlank(message = "Subject must not be blank") String subject,
+            @NotBlank(message = "Body must not be blank") String body
+    ) {}
 }

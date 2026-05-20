@@ -5,6 +5,7 @@ import com.zmail.model.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -51,6 +52,16 @@ public class EmailService {
 
     public List<EmailAccount> getAccounts(UUID userId) {
         return emailAccountRepository.findAllByUser(findUser(userId));
+    }
+
+    public EmailAccount getAccount(UUID userId, UUID accountId) {
+        return findAccount(userId, accountId);
+    }
+
+    @Transactional
+    public void deleteAccount(UUID userId, UUID accountId) {
+        EmailAccount account = findAccount(userId, accountId);
+        emailAccountRepository.delete(account);
     }
 
     public void send(UUID userId, UUID accountId, EmailDraft draft) {
