@@ -2,6 +2,7 @@ package com.zmail.model;
 
 import com.zmail.agent.model.ActionType;
 import com.zmail.agent.model.DraftStatus;
+import com.fasterxml.jackson.annotation.JsonRawValue;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -63,6 +64,7 @@ public class ProcessingResult {
     private String summary;
 
     /** JSON 数组，e.g. ["Reply by Friday","Attach report"] */
+    @JsonRawValue
     @Column(name = "action_items", columnDefinition = "TEXT")
     private String actionItems;
 

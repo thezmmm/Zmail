@@ -27,13 +27,16 @@ public class ResultController {
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ProcessingResult>>> list(
             Authentication auth,
+            @RequestParam(required = false) String category,
             @PageableDefault(size = 20, sort = "processedAt") Pageable pageable) {
         if (pageable.getPageNumber() < 0 || pageable.getPageSize() < 1) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Invalid pagination: page >= 0 and size >= 1 required"));
         }
         UUID userId = UUID.fromString(auth.getName());
-        return ResponseEntity.ok(ApiResponse.ok(
-                repository.findByUserIdOrderByProcessedAtDesc(userId, pageable)));
+        Page<ProcessingResult> page = (category != null && !category.isBlank())
+                ? repository.findByUserIdAndCategoryOrderByProcessedAtDesc(userId, category, pageable)
+                : repository.findByUserIdOrderByProcessedAtDesc(userId, pageable);
+        return ResponseEntity.ok(ApiResponse.ok(page));
     }
 
     @GetMapping("/{id}")

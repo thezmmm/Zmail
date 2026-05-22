@@ -15,6 +15,9 @@ public interface ProcessingResultRepository extends JpaRepository<ProcessingResu
 
     Page<ProcessingResult> findByUserIdOrderByProcessedAtDesc(UUID userId, Pageable pageable);
 
+    Page<ProcessingResult> findByUserIdAndCategoryOrderByProcessedAtDesc(
+            UUID userId, String category, Pageable pageable);
+
     /** Latest row for a given (user, email) pair — used by ReplyNode to update its draft. */
     Optional<ProcessingResult> findTopByUserIdAndEmailProviderIdOrderByProcessedAtDesc(
             UUID userId, String emailProviderId);
