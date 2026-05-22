@@ -4,6 +4,16 @@ export interface ApiResponse<T> {
   timestamp: string
 }
 
+export interface PagedResponse<T> {
+  content: T[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
+  first: boolean
+  last: boolean
+}
+
 export type EmailProvider = 'GMAIL' | 'MSGRAPH'
 export type SyncStatus = 'RUNNING' | 'DONE' | 'FAILED'
 export type DraftStatus = 'PENDING_REVIEW' | 'SENT' | 'REJECTED'
@@ -36,16 +46,15 @@ export interface ProcessingResult {
   id: string
   userId: string
   accountId: string
-  providerId: string
+  emailProviderId: string
   subject: string
   sender: string
-  receivedAt: string
   processedAt: string
   category: Category
   priority: Priority
   sentiment: Sentiment
   summary: string
-  actionItems: string[]
+  actionItems: string[] | null
   requiresResponse: boolean
   actionTaken: ActionTaken
   draftStatus: DraftStatus | null
