@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useResults } from '@/hooks/useResults'
 import ResultCard from '@/components/email/ResultCard'
 import EmptyState from '@/components/ui/EmptyState'
@@ -21,6 +21,24 @@ export default function InboxPage() {
   const [category, setCategory] = useState<Category | undefined>(undefined)
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
     useResults(category)
+
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  // Trigger next page when sentinel enters viewport
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const results = data?.pages.flatMap(p => p.content) ?? []
 
@@ -61,15 +79,12 @@ export default function InboxPage() {
               <ResultCard key={result.id} result={result} />
             ))}
 
-            {hasNextPage && (
-              <div className="flex justify-center pt-4 pb-2">
-                <button
-                  onClick={() => fetchNextPage()}
-                  disabled={isFetchingNextPage}
-                  className="flex items-center gap-2 rounded-md px-4 py-2 text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300 disabled:opacity-50"
-                >
-                  {isFetchingNextPage ? <Spinner className="h-3.5 w-3.5" /> : '加载更多'}
-                </button>
+            {/* Sentinel — triggers next page load when visible */}
+            <div ref={sentinelRef} className="h-4" />
+
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-3">
+                <Spinner className="h-4 w-4" />
               </div>
             )}
           </div>
