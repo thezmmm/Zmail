@@ -36,3 +36,10 @@ logging:
     com.zmail: DEBUG
     dev.langchain4j: INFO
     org.springframework.security: DEBUG
+
+# HTTP proxy for dev — set to your local Clash port (default 7890)
+# Leave host blank to disable
+dev:
+  proxy:
+    host: 127.0.0.1
+    port: 7890
