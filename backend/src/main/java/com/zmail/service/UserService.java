@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.NoSuchElementException;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -13,6 +15,11 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final EmailAccountRepository emailAccountRepository;
+
+    public User getById(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + userId));
+    }
 
     @Transactional
     public User findOrCreate(String email, String name) {

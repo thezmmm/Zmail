@@ -28,6 +28,8 @@ import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/auth")
@@ -58,10 +60,19 @@ public class AuthController {
 
     @GetMapping("/gmail/login")
     public void initiateGmailLogin(HttpServletResponse response) throws IOException {
-        ClientRegistration google = clientRegistrationRepository.findByRegistrationId("google");
-        String state = stateStore.generate();
+        response.sendRedirect(buildGmailAuthUri(stateStore.generate()));
+    }
 
-        String authUri = UriComponentsBuilder
+    /** Returns the Google OAuth URL so the authenticated frontend can initiate a link. */
+    @PostMapping("/gmail/link-init")
+    public ResponseEntity<ApiResponse<String>> gmailLinkInit(Authentication auth) {
+        UUID userId = UUID.fromString(auth.getName());
+        return ResponseEntity.ok(ApiResponse.ok(buildGmailAuthUri(stateStore.generateLink(userId))));
+    }
+
+    private String buildGmailAuthUri(String state) {
+        ClientRegistration google = clientRegistrationRepository.findByRegistrationId("google");
+        return UriComponentsBuilder
                 .fromHttpUrl(google.getProviderDetails().getAuthorizationUri())
                 .queryParam("client_id", google.getClientId())
                 .queryParam("redirect_uri", gmailRedirectUri)
@@ -71,15 +82,15 @@ public class AuthController {
                 .queryParam("access_type", "offline")
                 .queryParam("prompt", "consent")
                 .toUriString();
-
-        response.sendRedirect(authUri);
     }
 
     @GetMapping("/gmail/callback")
     public void handleGmailCallback(@RequestParam String code,
                                     @RequestParam String state,
                                     HttpServletResponse response) throws IOException {
-        if (!stateStore.consume(state)) {
+        // Determine flow: link (existing user) or login (find/create user)
+        Optional<UUID> linkUserId = stateStore.consumeLink(state);
+        if (linkUserId.isEmpty() && !stateStore.consume(state)) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid or expired OAuth2 state");
             return;
         }
@@ -121,25 +132,43 @@ public class AuthController {
         String email = (String) userInfo.get("email");
         String name  = (String) userInfo.get("name");
 
-        // Persist and issue JWT
-        User user = userService.findOrCreate(email, name);
-        userService.upsertEmailAccount(user, EmailProvider.GMAIL, email,
-                accessToken, refreshToken, tokenExpiry);
-        initialSyncService.triggerAsync(user.getId());
-
-        String jwt = jwtService.generateToken(user.getId().toString());
-        log.info("Gmail OAuth2 completed for {}", email);
-        response.sendRedirect(frontendUrl + "/auth/callback?token=" + jwt + "&provider=gmail");
+        if (linkUserId.isPresent()) {
+            // Link flow: attach this Gmail account to the already-authenticated user
+            User user = userService.getById(linkUserId.get());
+            userService.upsertEmailAccount(user, EmailProvider.GMAIL, email,
+                    accessToken, refreshToken, tokenExpiry);
+            initialSyncService.triggerAsync(user.getId());
+            log.info("Gmail account {} linked to user {}", email, user.getId());
+            response.sendRedirect(frontendUrl + "/auth/link-callback?provider=gmail");
+        } else {
+            // Login flow: find or create the user, then issue a new JWT
+            User user = userService.findOrCreate(email, name);
+            userService.upsertEmailAccount(user, EmailProvider.GMAIL, email,
+                    accessToken, refreshToken, tokenExpiry);
+            initialSyncService.triggerAsync(user.getId());
+            String jwt = jwtService.generateToken(user.getId().toString());
+            log.info("Gmail OAuth2 login completed for {}", email);
+            response.sendRedirect(frontendUrl + "/auth/callback?token=" + jwt + "&provider=gmail");
+        }
     }
 
     // ── Microsoft Graph ────────────────────────────────────────────────────────
 
     @GetMapping("/msgraph/login")
     public void initiateMsgraphLogin(HttpServletResponse response) throws IOException {
-        ClientRegistration microsoft = clientRegistrationRepository.findByRegistrationId("microsoft");
-        String state = stateStore.generate();
+        response.sendRedirect(buildMsgraphAuthUri(stateStore.generate()));
+    }
 
-        String authUri = UriComponentsBuilder
+    /** Returns the Microsoft OAuth URL so the authenticated frontend can initiate a link. */
+    @PostMapping("/msgraph/link-init")
+    public ResponseEntity<ApiResponse<String>> msgraphLinkInit(Authentication auth) {
+        UUID userId = UUID.fromString(auth.getName());
+        return ResponseEntity.ok(ApiResponse.ok(buildMsgraphAuthUri(stateStore.generateLink(userId))));
+    }
+
+    private String buildMsgraphAuthUri(String state) {
+        ClientRegistration microsoft = clientRegistrationRepository.findByRegistrationId("microsoft");
+        return UriComponentsBuilder
                 .fromHttpUrl(microsoft.getProviderDetails().getAuthorizationUri())
                 .queryParam("client_id", microsoft.getClientId())
                 .queryParam("redirect_uri", msgraphRedirectUri)
@@ -148,15 +177,15 @@ public class AuthController {
                 .queryParam("state", state)
                 .queryParam("prompt", "consent")
                 .toUriString();
-
-        response.sendRedirect(authUri);
     }
 
     @GetMapping("/msgraph/callback")
     public void handleMsgraphCallback(@RequestParam String code,
                                       @RequestParam String state,
                                       HttpServletResponse response) throws IOException {
-        if (!stateStore.consume(state)) {
+        // Determine flow: link (existing user) or login (find/create user)
+        Optional<UUID> linkUserId = stateStore.consumeLink(state);
+        if (linkUserId.isEmpty() && !stateStore.consume(state)) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid or expired OAuth2 state");
             return;
         }
@@ -216,14 +245,24 @@ public class AuthController {
                 : (String) profile.get("userPrincipalName");
         String name  = (String) profile.get("displayName");
 
-        User user = userService.findOrCreate(email, name);
-        userService.upsertEmailAccount(user, EmailProvider.MSGRAPH, email,
-                accessToken, refreshToken, tokenExpiry);
-        initialSyncService.triggerAsync(user.getId());
-
-        String jwt = jwtService.generateToken(user.getId().toString());
-        log.info("MS Graph OAuth2 completed for {}", email);
-        response.sendRedirect(frontendUrl + "/auth/callback?token=" + jwt + "&provider=msgraph");
+        if (linkUserId.isPresent()) {
+            // Link flow: attach this Outlook account to the already-authenticated user
+            User user = userService.getById(linkUserId.get());
+            userService.upsertEmailAccount(user, EmailProvider.MSGRAPH, email,
+                    accessToken, refreshToken, tokenExpiry);
+            initialSyncService.triggerAsync(user.getId());
+            log.info("Outlook account {} linked to user {}", email, user.getId());
+            response.sendRedirect(frontendUrl + "/auth/link-callback?provider=msgraph");
+        } else {
+            // Login flow: find or create the user, then issue a new JWT
+            User user = userService.findOrCreate(email, name);
+            userService.upsertEmailAccount(user, EmailProvider.MSGRAPH, email,
+                    accessToken, refreshToken, tokenExpiry);
+            initialSyncService.triggerAsync(user.getId());
+            String jwt = jwtService.generateToken(user.getId().toString());
+            log.info("MS Graph OAuth2 login completed for {}", email);
+            response.sendRedirect(frontendUrl + "/auth/callback?token=" + jwt + "&provider=msgraph");
+        }
     }
 
     // ── Token refresh ─────────────────────────────────────────────────────────
