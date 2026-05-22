@@ -32,9 +32,9 @@ public class SessionController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<SessionDto>> create(
-            @RequestBody CreateSessionRequest req, Authentication auth) {
+            @RequestBody(required = false) CreateSessionRequest req, Authentication auth) {
         UUID userId = UUID.fromString(auth.getName());
-        String title = (req.title() != null && !req.title().isBlank())
+        String title = (req != null && req.title() != null && !req.title().isBlank())
                 ? req.title() : "New conversation";
         AgentSession s = sessionService.create(userId, title);
         return ResponseEntity.ok(ApiResponse.ok(toDto(s)));
@@ -57,6 +57,15 @@ public class SessionController {
                 .stream().map(this::toDto).toList();
         return ResponseEntity.ok(ApiResponse.ok(
                 new SessionDetailDto(toDto(session), messages)));
+    }
+
+    @GetMapping("/{sessionId}/messages")
+    public ResponseEntity<ApiResponse<List<MessageDto>>> messages(
+            @PathVariable UUID sessionId, Authentication auth) {
+        UUID userId = UUID.fromString(auth.getName());
+        List<MessageDto> messages = sessionService.listMessages(sessionId, userId)
+                .stream().map(this::toDto).toList();
+        return ResponseEntity.ok(ApiResponse.ok(messages));
     }
 
     @DeleteMapping("/{sessionId}")
