@@ -1,7 +1,9 @@
 package com.zmail.config;
 
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +21,9 @@ public class LangChainConfig {
 
     @Value("${langchain4j.open-ai.api-key}")
     private String openAiApiKey;
+
+    @Value("${zmail.embedding.model-name:text-embedding-3-small}")
+    private String embeddingModelName;
 
     @Bean("classifyModel")
     public ChatLanguageModel classifyModel() {
@@ -42,11 +47,6 @@ public class LangChainConfig {
                 .build();
     }
 
-    /**
-     * Shared thread pool for parallel LLM calls inside SummarizeNode.
-     * Pool size = maxParallelLlmCalls (default 5) → natural API concurrency cap.
-     * Queue capacity absorbs bursts up to maxEmailsPerRun without rejection.
-     */
     @Bean("compressModel")
     public ChatLanguageModel compressModel() {
         return OpenAiChatModel.builder()
@@ -68,6 +68,20 @@ public class LangChainConfig {
                 .build();
     }
 
+    @Bean
+    public EmbeddingModel embeddingModel() {
+        return OpenAiEmbeddingModel.builder()
+                .baseUrl(agentProperties.getBaseUrl())
+                .apiKey(openAiApiKey)
+                .modelName(embeddingModelName)
+                .build();
+    }
+
+    /**
+     * Shared thread pool for parallel LLM calls inside SummarizeNode.
+     * Pool size = maxParallelLlmCalls (default 5) → natural API concurrency cap.
+     * Queue capacity absorbs bursts up to maxEmailsPerRun without rejection.
+     */
     @Bean("agentExecutor")
     public Executor agentExecutor() {
         int parallelism = agentProperties.getMaxParallelLlmCalls();

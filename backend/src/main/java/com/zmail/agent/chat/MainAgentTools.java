@@ -2,6 +2,7 @@ package com.zmail.agent.chat;
 
 import com.zmail.agent.action.ActionAgentService;
 import com.zmail.agent.digest.DigestAgentGraph;
+import com.zmail.service.EmailEmbeddingService;
 import com.zmail.agent.model.DigestResult;
 import com.zmail.agent.model.EmailDigest;
 import com.zmail.agent.model.EmailRef;
@@ -25,8 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class MainAgentTools {
 
-    private final DigestAgentGraph   digestAgentGraph;
-    private final ActionAgentService actionAgentService;
+    private final DigestAgentGraph     digestAgentGraph;
+    private final ActionAgentService   actionAgentService;
+    private final EmailEmbeddingService emailEmbeddingService;
 
     /** sessionId → (userId, emailRefs) for the pending request. */
     private final Map<String, PendingContext> pendingContexts = new ConcurrentHashMap<>();
@@ -101,6 +103,36 @@ public class MainAgentTools {
         }
 
         return actionAgentService.analyzeEmail(ctx.userId(), ref, question);
+    }
+
+    @Tool("Search past emails by meaning or topic. Call this when the user asks questions like " +
+          "'find emails about X', 'do I have any emails regarding Y', or 'what emails mentioned Z'.")
+    public String searchEmailsByMeaning(
+            @P("The current session ID") String sessionId,
+            @P("A natural language description of what emails to find") String query) {
+
+        PendingContext ctx = pendingContexts.get(sessionId);
+        if (ctx == null) return "Session context not found.";
+
+        List<EmailEmbeddingService.SimilarEmailResult> results =
+                emailEmbeddingService.search(ctx.userId(), query, 5);
+
+        if (results.isEmpty()) {
+            return "No emails found matching: \"" + query + "\".";
+        }
+
+        StringBuilder sb = new StringBuilder("Found ").append(results.size())
+                .append(" relevant email(s) for \"").append(query).append("\":\n\n");
+        for (EmailEmbeddingService.SimilarEmailResult r : results) {
+            sb.append("- **").append(r.subject()).append("** (from ").append(r.sender()).append(")\n");
+            sb.append("  Category: ").append(r.category())
+              .append(" | Priority: ").append(r.priority()).append("\n");
+            if (r.summary() != null && !r.summary().isBlank()) {
+                sb.append("  ").append(r.summary()).append("\n");
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 
     // ── Formatting ────────────────────────────────────────────────────────────
