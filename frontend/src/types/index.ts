@@ -49,16 +49,18 @@ export interface ProcessingResult {
   emailProviderId: string
   subject: string
   sender: string
+  receivedAt: string | null
   processedAt: string
   category: Category
   priority: Priority
   sentiment: Sentiment
-  summary: string
+  summary: string | null
   actionItems: string[] | null
   requiresResponse: boolean
   actionTaken: ActionTaken
   draftStatus: DraftStatus | null
   replyDraft: string | null
+  analyzed: boolean
 }
 
 export interface AgentSession {
@@ -77,6 +79,16 @@ export interface AgentMessage {
   role: 'USER' | 'ASSISTANT'
   content: string
   createdAt: string
+}
+
+export interface EmailMessage {
+  providerId: string
+  accountId: string
+  subject: string
+  sender: string
+  recipients: string[]
+  receivedAt: string
+  body: string
 }
 
 export interface EmailRef {

@@ -40,7 +40,11 @@ export default function InboxPage() {
     return () => observer.disconnect()
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  const results = data?.pages.flatMap(p => p.content) ?? []
+  const results = [
+    ...new Map(
+      (data?.pages.flatMap(p => p.content) ?? []).map(r => [r.id, r]),
+    ).values(),
+  ]
 
   return (
     <div className="flex h-full flex-col">

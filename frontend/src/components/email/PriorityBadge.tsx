@@ -14,6 +14,7 @@ const labels: Record<Priority, string> = {
 }
 
 export default function PriorityBadge({ priority }: { priority: Priority }) {
+  if (!(priority in labels)) return null
   return (
     <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium leading-none', styles[priority])}>
       {labels[priority]}

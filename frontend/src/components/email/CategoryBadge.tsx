@@ -18,6 +18,7 @@ const labels: Record<Category, string> = {
 }
 
 export default function CategoryBadge({ category }: { category: Category }) {
+  if (!(category in labels)) return null
   return (
     <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium leading-none', styles[category])}>
       {labels[category]}
