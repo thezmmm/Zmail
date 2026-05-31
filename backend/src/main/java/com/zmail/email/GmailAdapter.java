@@ -1,6 +1,9 @@
 package com.zmail.email;
 
+import com.google.api.client.googleapis.GoogleUtils;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.http.HttpTransport;
+import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.*;
@@ -8,9 +11,12 @@ import com.zmail.model.EmailAccount;
 import com.zmail.service.OAuthTokenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.time.Instant;
@@ -21,11 +27,20 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class GmailAdapter implements EmailPort {
 
     private final OAuthTokenService tokenService;
+
+    @Value("${dev.proxy.host:}")
+    private String proxyHost;
+
+    @Value("${dev.proxy.port:7890}")
+    private int proxyPort;
+
+    public GmailAdapter(OAuthTokenService tokenService) {
+        this.tokenService = tokenService;
+    }
 
     @Override
     public List<EmailMessage> fetchUnread(EmailAccount account, int maxResults) {
@@ -126,10 +141,20 @@ public class GmailAdapter implements EmailPort {
     private Gmail buildService(EmailAccount account) throws GeneralSecurityException, IOException {
         String accessToken = tokenService.getValidAccessToken(account);
         return new Gmail.Builder(
-                GoogleNetHttpTransport.newTrustedTransport(),
+                buildTransport(),
                 GsonFactory.getDefaultInstance(),
                 req -> req.getHeaders().setAuthorization("Bearer " + accessToken)
         ).setApplicationName("Zmail").build();
+    }
+
+    private HttpTransport buildTransport() throws GeneralSecurityException, IOException {
+        if (proxyHost == null || proxyHost.isBlank()) {
+            return GoogleNetHttpTransport.newTrustedTransport();
+        }
+        return new NetHttpTransport.Builder()
+                .trustCertificates(GoogleUtils.getCertificateTrustStore())
+                .setProxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort)))
+                .build();
     }
 
     private void modifyLabels(EmailAccount account, String messageId,

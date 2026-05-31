@@ -17,10 +17,13 @@ import com.microsoft.kiota.authentication.BaseBearerTokenAuthenticationProvider;
 import com.microsoft.kiota.http.OkHttpRequestAdapter;
 import com.zmail.model.EmailAccount;
 import com.zmail.service.OAuthTokenService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -31,11 +34,20 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class MsGraphAdapter implements EmailPort {
 
     private final OAuthTokenService tokenService;
+
+    @Value("${dev.proxy.host:}")
+    private String proxyHost;
+
+    @Value("${dev.proxy.port:7890}")
+    private int proxyPort;
+
+    public MsGraphAdapter(OAuthTokenService tokenService) {
+        this.tokenService = tokenService;
+    }
 
     @Override
     public List<EmailMessage> fetchUnread(EmailAccount account, int maxResults) {
@@ -148,7 +160,15 @@ public class MsGraphAdapter implements EmailPort {
                         return new AllowedHostsValidator("graph.microsoft.com");
                     }
                 });
-        return new GraphServiceClient(new OkHttpRequestAdapter(authProvider));
+        return new GraphServiceClient(new OkHttpRequestAdapter(authProvider, null, null, buildOkHttpClient()));
+    }
+
+    private OkHttpClient buildOkHttpClient() {
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
+        if (proxyHost != null && !proxyHost.isBlank()) {
+            builder.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort)));
+        }
+        return builder.build();
     }
 
     private EmailMessage toEmailMessage(Message msg, UUID accountId) {

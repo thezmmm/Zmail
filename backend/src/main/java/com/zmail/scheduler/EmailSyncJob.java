@@ -6,11 +6,13 @@ import com.zmail.model.EmailAccountRepository;
 import com.zmail.service.EmailProcessingService;
 import com.zmail.service.EmailService;
 import com.zmail.service.RunGuard;
+import com.zmail.service.SyncWatermarkService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,6 +26,7 @@ public class EmailSyncJob {
     private final EmailAccountRepository accountRepository;
     private final RunGuard runGuard;
     private final AgentProperties props;
+    private final SyncWatermarkService watermark;
 
     @Scheduled(cron = "${zmail.scheduler.email-sync-cron}")
     public void sync() {
@@ -38,11 +41,6 @@ public class EmailSyncJob {
     }
 
     private void syncUser(UUID userId) {
-        // RunGuard enforces a 60-second cooldown (minRunIntervalMs) after each release().
-        // InitialSyncService.triggerAsync() calls processBatch() directly and does NOT
-        // go through RunGuard, so it never sets lastRunAt. The first scheduled run after
-        // initial sync will therefore always succeed — the cooldown only kicks in once
-        // EmailSyncJob itself has completed at least one run for this user.
         try {
             runGuard.acquire(userId);
         } catch (IllegalStateException e) {
@@ -50,11 +48,16 @@ public class EmailSyncJob {
             return;
         }
 
+        // Snapshot the sync start time before fetching so we don't miss emails
+        // that arrive during the sync window.
+        OffsetDateTime syncStartedAt = OffsetDateTime.now();
+        OffsetDateTime since = watermark.getWatermark(userId);
+
         int processed = 0;
         int skipped = 0;
 
         try {
-            List<EmailMessage> emails = emailService.fetchUnread(userId, props.getMaxEmailsPerRun());
+            List<EmailMessage> emails = emailService.fetchRecent(userId, props.getMaxEmailsPerRun(), since);
 
             for (EmailMessage email : emails) {
                 if (processingService.isAlreadyProcessed(userId, email.providerId())) {
@@ -62,16 +65,17 @@ public class EmailSyncJob {
                     continue;
                 }
                 try {
-                    processingService.process(userId, email.accountId(), email);
+                    processingService.classify(userId, email.accountId(), email);
                     processed++;
                 } catch (Exception e) {
-                    log.error("Failed to process email {} for user {}: {}",
+                    log.error("Failed to classify email {} for user {}: {}",
                             email.providerId(), userId, e.getMessage());
                 }
             }
 
-            log.info("Synced user {} — processed={} skipped={} total={}",
-                    userId, processed, skipped, emails.size());
+            watermark.advance(userId, syncStartedAt);
+            log.info("Synced user {} since {} — processed={} skipped={} total={}",
+                    userId, since, processed, skipped, emails.size());
         } catch (Exception e) {
             log.error("Sync failed for user {}: {}", userId, e.getMessage(), e);
         } finally {
