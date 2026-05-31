@@ -189,10 +189,13 @@ AI 同步处理完的邮件存在 `processing_results` 表，是前端主收件�
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/results?page=0&size=20` | 分页获取当前用户所有处理结果，按处理时间倒序 |
+| `GET` | `/results?page=0&size=20` | 分页获取当前用户所有处理结果，按邮件接收时间倒序 |
+| `GET` | `/results?page=0&size=20&category=WORK` | 按分类过滤（`WORK` / `PERSONAL` / `FINANCE` / `PROMOTIONS` / `OTHER`） |
 | `GET` | `/results/{id}` | 获取单条处理结果详情 |
+| `POST` | `/results/{id}/analyze` | 触发按需深度分析（生成摘要 + 待办事项 + 向量 Embedding） |
+| `POST` | `/results/{id}/draft` | 手动生成 AI 回复草稿 |
 
-处理结果包含字段：`category`、`priority`、`sentiment`、`summary`、`actionItems`、`actionTaken`、`draftStatus`、`replyDraft` 等。
+处理结果包含字段：`category`、`priority`、`sentiment`、`receivedAt`、`summary`、`actionItems`、`analyzed`、`actionTaken`、`draftStatus`、`replyDraft` 等。
 
 ### 草稿管理
 
@@ -321,35 +324,52 @@ zmail/
 | 主对话（MainAgent） | `gpt-4o` | `zmail.agent.main-model` |
 | 邮件摘要 + 总览生成 | `gpt-4o` | `zmail.agent.summarize-model` |
 | 对话历史压缩 | `gpt-4o-mini` | `zmail.agent.compress-model` |
-| 邮件同步处理（分类 + 摘要 + 行动决策） | `gpt-4o-mini` | `zmail.agent.classify-model` |
+| 邮件同步分类（category / priority / sentiment） | `gpt-4o-mini` | `zmail.agent.classify-model` |
 | Embedding | `text-embedding-3-small` | `zmail.embedding.model-name` |
 
 ## 定时任务
 
 | 任务 | 触发时间 | 状态 | 说明 |
 |---|---|---|---|
-| `EmailSyncJob` | 每 5 分钟 | ✅ 已实现 | 拉取未读邮件 → 分类 / 摘要 / 行动决策（单次 LLM）→ 写 `processing_results` |
+| `EmailSyncJob` | 每 5 分钟 | ✅ 已实现 | 按水印时间拉取新邮件 → 仅分类（category / priority / sentiment）→ 写 `processing_results`；摘要和草稿按需触发 |
 | `DailySummaryJob` | 每天 08:00 | 🚧 待实现 | 聚合 `processing_results` 生成今日任务清单 |
 | `MemoryConsolidationJob` | 每天 00:00 | 🚧 待实现 | 压缩历史邮件记忆到 pgvector |
 
 ### EmailSyncJob 处理流程
 
+AI 处理分三个阶段，按需触发，降低 token 消耗：
+
 ```
-fetchUnread()（Gmail / Graph，跳过 needsReauth 账号）
+阶段 1 — 后台同步（自动，每 5 分钟）
+─────────────────────────────────────────────────────
+fetchRecent(since=watermark)（Gmail / Graph，跳过 needsReauth 账号）
     │
     ├─ 已存在 processing_results → 跳过
     │
-    └─ 新邮件 → EmailProcessingAgent（gpt-4o-mini，单次调用）
+    └─ 新邮件 → EmailProcessingAgent（gpt-4o-mini）
                   输出：category / priority / sentiment /
-                        requiresResponse / summary / actionItems / recommendedAction
-                  │
-                  ├─ REPLY   → ActionAgentService.draftReply() → draftStatus=PENDING_REVIEW
-                  ├─ ARCHIVE → GmailAdapter / MsGraphAdapter.archive()
-                  ├─ FLAG    → GmailAdapter / MsGraphAdapter.flag()
-                  └─ NONE    → 仅存记录
+                        requiresResponse / recommendedAction
+                  analyzed = false
+                  → 写 processing_results
+
+阶段 2 — 按需深度分析（用户首次打开邮件详情页时自动触发）
+─────────────────────────────────────────────────────
+POST /results/{id}/analyze
+    └─ 拉取邮件原文 → EmailSummarizeAgent（gpt-4o）
+         输出：summary / actionItems
+         analyzed = true → 向量 Embedding 写入 pgvector
+
+阶段 3 — 手动生成草稿（用户主动点击"生成草稿"）
+─────────────────────────────────────────────────────
+POST /results/{id}/draft
+    └─ ActionAgentService.draftReply()
+         → draftStatus = PENDING_REVIEW
+         用户可在详情页审批发送或拒绝重生成
 ```
 
-**与 InitialSyncService 的关系**：用户首次 OAuth 授权后，`InitialSyncService` 会异步拉取最近 3 天的邮件并批量处理（走 `agentExecutor` 线程池，不经过 `RunGuard`）。5 分钟后 `EmailSyncJob` 触发时，因为初始同步没有设置 `RunGuard` 的 cooldown，定时任务可以正常运行，不会被跳过。
+**同步水印（SyncWatermarkService）**：每次同步记录本次开始时间，下次从该时间点拉取，避免拉取历史大量旧邮件。服务重启后退回到 `now - 24h` 兜底，确保不漏邮件。
+
+**与 InitialSyncService 的关系**：用户首次 OAuth 授权后，`InitialSyncService` 会异步拉取最近 3 天的邮件并批量处理（走 `agentExecutor` 线程池）。
 
 ## 常用命令
 
