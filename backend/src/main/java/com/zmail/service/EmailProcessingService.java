@@ -3,6 +3,7 @@ package com.zmail.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zmail.agent.action.ActionAgentService;
 import com.zmail.agent.action.EmailProcessingAgent;
+import com.zmail.agent.action.EmailSummarizeAgent;
 import com.zmail.agent.model.ActionType;
 import com.zmail.agent.model.DraftStatus;
 import com.zmail.agent.model.EmailRef;
@@ -16,8 +17,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -29,6 +33,8 @@ public class EmailProcessingService {
 
     @Qualifier("classifyModel")
     private final ChatLanguageModel classifyModel;
+    @Qualifier("summarizeModel")
+    private final ChatLanguageModel summarizeModel;
     @Qualifier("agentExecutor")
     private final Executor agentExecutor;
     private final ObjectMapper objectMapper;
@@ -36,15 +42,20 @@ public class EmailProcessingService {
     private final EmailService emailService;
     private final ActionAgentService actionAgentService;
     private final LlmRetryHelper retry;
+    private final EmailEmbeddingService emailEmbeddingService;
 
     private static final int BODY_LIMIT = 3000;
 
     private EmailProcessingAgent processingAgent;
+    private EmailSummarizeAgent summarizeAgent;
 
     @PostConstruct
     void init() {
         processingAgent = AiServices.builder(EmailProcessingAgent.class)
                 .chatLanguageModel(classifyModel)
+                .build();
+        summarizeAgent = AiServices.builder(EmailSummarizeAgent.class)
+                .chatLanguageModel(summarizeModel)
                 .build();
     }
 
@@ -54,9 +65,9 @@ public class EmailProcessingService {
                 .filter(email -> !isAlreadyProcessed(userId, email.providerId()))
                 .map(email -> CompletableFuture.runAsync(() -> {
                     try {
-                        process(userId, email.accountId(), email);
+                        classify(userId, email.accountId(), email);
                     } catch (Exception e) {
-                        log.error("Failed to process email {} for user {}: {}",
+                        log.error("Failed to classify email {} for user {}: {}",
                                 email.providerId(), userId, e.getMessage());
                     }
                 }, agentExecutor))
@@ -69,8 +80,9 @@ public class EmailProcessingService {
         return resultRepository.existsByUserIdAndEmailProviderId(userId, emailProviderId);
     }
 
-    public void process(UUID userId, UUID accountId, EmailMessage email) {
-        AnalysisResult analysis = analyze(email);
+    /** Background classify-only — fast, cheap, no summary/actions. */
+    public void classify(UUID userId, UUID accountId, EmailMessage email) {
+        ClassifyResult classification = runClassify(email);
 
         ProcessingResult result = new ProcessingResult();
         result.setUserId(userId);
@@ -78,57 +90,95 @@ public class EmailProcessingService {
         result.setAccountId(accountId);
         result.setSubject(email.subject());
         result.setSender(email.sender());
-        result.setCategory(analysis.category());
-        result.setPriority(analysis.priority());
-        result.setSentiment(analysis.sentiment());
-        result.setRequiresResponse(analysis.requiresResponse());
-        result.setSummary(analysis.summary());
-        result.setActionItems(toJsonArray(analysis.actionItems()));
+        result.setCategory(classification.category().toUpperCase());
+        result.setPriority(classification.priority().toUpperCase());
+        result.setSentiment(classification.sentiment().toUpperCase());
+        result.setRequiresResponse(classification.requiresResponse());
+        result.setActionTaken(parseAction(classification.recommendedAction()));
+        result.setReceivedAt(email.receivedAt());
         result.setProcessedAt(OffsetDateTime.now());
-
-        ActionType action = parseAction(analysis.recommendedAction());
-        result.setActionTaken(action);
-
-        EmailRef ref = new EmailRef(email.providerId(), accountId);
-        switch (action) {
-            case REPLY -> {
-                String draft = actionAgentService.draftReply(userId, ref,
-                        "Draft a professional reply to this email.");
-                result.setReplyDraft(draft);
-                result.setDraftStatus(DraftStatus.PENDING_REVIEW);
-            }
-            case ARCHIVE -> emailService.archive(userId, accountId, email.providerId());
-            case FLAG    -> emailService.flag(userId, accountId, email.providerId());
-            case NONE    -> {}
-        }
+        result.setAnalyzed(false);
 
         resultRepository.save(result);
-        log.info("Processed email {} for user {} → {}", email.providerId(), userId, action);
+        log.info("Classified email {} for user {} → {}", email.providerId(), userId, result.getActionTaken());
+    }
+
+    /** On-demand analysis triggered on first view — summarize, extract action items, embed. */
+    @Transactional
+    public ProcessingResult analyzeOnDemand(UUID userId, UUID resultId) {
+        ProcessingResult result = resultRepository.findById(resultId)
+                .orElseThrow(() -> new NoSuchElementException("Result not found: " + resultId));
+        if (!result.getUserId().equals(userId)) throw new SecurityException("Access denied");
+        if (result.isAnalyzed()) return result;
+
+        EmailMessage email;
+        try {
+            email = emailService.fetchById(userId, result.getAccountId(), result.getEmailProviderId());
+        } catch (Exception e) {
+            log.warn("Could not fetch email body for analysis {}: {}", resultId, e.getMessage());
+            result.setAnalyzed(true);
+            return resultRepository.save(result);
+        }
+
+        SummarizeResult summarized = runSummarize(email);
+        result.setSummary(summarized.summary());
+        result.setActionItems(toJsonArray(summarized.actionItems()));
+        result.setAnalyzed(true);
+        ProcessingResult saved = resultRepository.save(result);
+
+        emailEmbeddingService.embed(saved);
+        return saved;
+    }
+
+    /** User-initiated draft generation. */
+    @Transactional
+    public ProcessingResult generateDraft(UUID userId, UUID resultId) {
+        ProcessingResult result = resultRepository.findById(resultId)
+                .orElseThrow(() -> new NoSuchElementException("Result not found: " + resultId));
+        if (!result.getUserId().equals(userId)) throw new SecurityException("Access denied");
+
+        EmailRef ref = new EmailRef(result.getEmailProviderId(), result.getAccountId());
+        String draft = actionAgentService.draftReply(userId, ref, "Draft a professional reply to this email.");
+        result.setReplyDraft(draft);
+        result.setDraftStatus(DraftStatus.PENDING_REVIEW);
+        return resultRepository.save(result);
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
-    private AnalysisResult analyze(EmailMessage email) {
+    private ClassifyResult runClassify(EmailMessage email) {
+        String content = buildContent(email);
+        return retry.call(
+                "classify:" + email.providerId(),
+                () -> objectMapper.readValue(
+                        stripMarkdown(processingAgent.analyze(content)),
+                        ClassifyResult.class),
+                new ClassifyResult("OTHER", "LOW", "NEUTRAL", false, "NONE")
+        );
+    }
+
+    private SummarizeResult runSummarize(EmailMessage email) {
+        String content = buildContent(email);
+        return retry.call(
+                "summarize:" + email.providerId(),
+                () -> objectMapper.readValue(
+                        stripMarkdown(summarizeAgent.summarize(content)),
+                        SummarizeResult.class),
+                new SummarizeResult("Could not summarize this email.", List.of())
+        );
+    }
+
+    private String buildContent(EmailMessage email) {
         String body = email.body() != null && email.body().length() > BODY_LIMIT
                 ? email.body().substring(0, BODY_LIMIT) + "..."
                 : email.body();
-
-        String content = """
+        return """
                 Subject: %s
                 From: %s
                 Received: %s
                 Body:
                 %s
                 """.formatted(email.subject(), email.sender(), email.receivedAt(), body);
-
-        return retry.call(
-                "processEmail:" + email.providerId(),
-                () -> objectMapper.readValue(
-                        stripMarkdown(processingAgent.analyze(content)),
-                        AnalysisResult.class),
-                new AnalysisResult("other", "low", "neutral", false,
-                        "Could not analyze this email.", List.of(), "NONE")
-        );
     }
 
     private ActionType parseAction(String raw) {
@@ -156,13 +206,16 @@ public class EmailProcessingService {
         return t;
     }
 
-    private record AnalysisResult(
+    private record ClassifyResult(
             String category,
             String priority,
             String sentiment,
             boolean requiresResponse,
-            String summary,
-            List<String> actionItems,
             String recommendedAction
+    ) {}
+
+    private record SummarizeResult(
+            String summary,
+            List<String> actionItems
     ) {}
 }

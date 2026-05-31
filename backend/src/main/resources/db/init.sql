@@ -69,11 +69,14 @@ CREATE TABLE IF NOT EXISTS processing_results (
     action_items        TEXT,
     reply_draft         TEXT,
     draft_status        VARCHAR(20),
+    received_at         TIMESTAMPTZ,
     processed_at        TIMESTAMPTZ NOT NULL,
+    analyzed            BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (user_id, email_provider_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pr_user_id      ON processing_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_pr_received_at  ON processing_results(received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_processed_at ON processing_results(processed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_draft_status ON processing_results(draft_status);
 
@@ -86,7 +89,8 @@ CREATE TABLE IF NOT EXISTS email_embeddings (
     content     TEXT NOT NULL,
     embedding   vector(1536),
     metadata    JSONB,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, source_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_embeddings_vector

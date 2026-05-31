@@ -14,6 +14,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "processing_results", indexes = {
         @Index(name = "idx_pr_user_id",      columnList = "user_id"),
+        @Index(name = "idx_pr_received_at",  columnList = "received_at"),
         @Index(name = "idx_pr_processed_at", columnList = "processed_at"),
         @Index(name = "idx_pr_draft_status", columnList = "draft_status")
 })
@@ -77,6 +78,13 @@ public class ProcessingResult {
     @Column(name = "draft_status", length = 20)
     private DraftStatus draftStatus;
 
+    @Column(name = "received_at")
+    private OffsetDateTime receivedAt;
+
     @Column(name = "processed_at", nullable = false)
     private OffsetDateTime processedAt;
+
+    /** False until the user first opens the detail page and on-demand analysis completes. */
+    @Column(nullable = false)
+    private boolean analyzed = false;
 }

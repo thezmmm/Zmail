@@ -13,9 +13,9 @@ public interface ProcessingResultRepository extends JpaRepository<ProcessingResu
 
     boolean existsByUserIdAndEmailProviderId(UUID userId, String emailProviderId);
 
-    Page<ProcessingResult> findByUserIdOrderByProcessedAtDesc(UUID userId, Pageable pageable);
+    Page<ProcessingResult> findByUserIdOrderByReceivedAtDescIdAsc(UUID userId, Pageable pageable);
 
-    Page<ProcessingResult> findByUserIdAndCategoryOrderByProcessedAtDesc(
+    Page<ProcessingResult> findByUserIdAndCategoryOrderByReceivedAtDescIdAsc(
             UUID userId, String category, Pageable pageable);
 
     /** Latest row for a given (user, email) pair — used by ReplyNode to update its draft. */
