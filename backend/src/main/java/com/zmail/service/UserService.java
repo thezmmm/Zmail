@@ -40,7 +40,11 @@ public class UserService {
                 .findByUserAndProviderAndAccountEmail(user, provider, accountEmail)
                 .map(account -> {
                     account.setAccessToken(accessToken);
-                    account.setRefreshToken(refreshToken);
+                    // Only overwrite refresh token when provider actually returns a new one;
+                    // some flows (e.g. silent re-auth) omit it and we must keep the old one.
+                    if (refreshToken != null && !refreshToken.isBlank()) {
+                        account.setRefreshToken(refreshToken);
+                    }
                     account.setTokenExpiry(tokenExpiry);
                     account.setNeedsReauth(false);
                     return emailAccountRepository.save(account);

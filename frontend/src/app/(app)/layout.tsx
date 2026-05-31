@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { isAuthenticated } from '@/lib/auth'
+import { isAuthenticated, clearToken } from '@/lib/auth'
+import api from '@/lib/api'
 import Sidebar from '@/components/layout/Sidebar'
 import Spinner from '@/components/ui/Spinner'
 
@@ -13,9 +14,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isAuthenticated()) {
       router.replace('/login')
-    } else {
-      setReady(true)
+      return
     }
+    // Verify the JWT still points to a live user (guards against DB wipes or account deletion)
+    api.get('/users/me').then(() => {
+      setReady(true)
+    }).catch(() => {
+      clearToken()
+      router.replace('/login')
+    })
   }, [router])
 
   if (!ready) {

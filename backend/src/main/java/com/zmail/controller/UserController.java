@@ -4,6 +4,7 @@ import com.zmail.model.ApiResponse;
 import com.zmail.model.User;
 import com.zmail.model.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,7 +12,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.OffsetDateTime;
-import java.util.NoSuchElementException;
 import java.util.UUID;
 
 @RestController
@@ -24,9 +24,10 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserDto>> me(Authentication auth) {
         UUID userId = UUID.fromString(auth.getName());
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new NoSuchElementException("User not found"));
-        return ResponseEntity.ok(ApiResponse.ok(toDto(user)));
+        return userRepository.findById(userId)
+                .map(user -> ResponseEntity.ok(ApiResponse.ok(toDto(user))))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(ApiResponse.error("Session invalid: user no longer exists")));
     }
 
     private UserDto toDto(User u) {
