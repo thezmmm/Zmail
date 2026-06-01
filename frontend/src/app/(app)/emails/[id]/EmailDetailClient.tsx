@@ -1,5 +1,6 @@
 'use client'
 
+import DOMPurify from 'dompurify'
 import { useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
@@ -282,7 +283,7 @@ export default function EmailDetailClient() {
         ) : htmlBody && email?.body ? (
           <div
             className="prose prose-sm max-w-none p-6 text-gray-900"
-            dangerouslySetInnerHTML={{ __html: email.body }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(email.body) }}
           />
         ) : plainBody ? (
           <pre className="whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
