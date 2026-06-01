@@ -48,7 +48,9 @@ export default function DraftsPage() {
                 draft={draft}
                 onApprove={id => approve.mutate(id)}
                 onReject={id => reject.mutate(id)}
-                isPending={anyPending}
+                isApprovePending={approve.isPending && approve.variables === draft.id}
+                isRejectPending={reject.isPending && reject.variables === draft.id}
+                disabled={anyPending}
               />
             ))}
 

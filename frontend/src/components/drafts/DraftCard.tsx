@@ -8,11 +8,13 @@ interface DraftCardProps {
   draft: ProcessingResult
   onApprove: (id: string) => void
   onReject: (id: string) => void
-  isPending: boolean
+  isApprovePending: boolean
+  isRejectPending: boolean
+  disabled: boolean
 }
 
-export default function DraftCard({ draft, onApprove, onReject, isPending }: DraftCardProps) {
-  const timeAgo = formatDistanceToNow(new Date(draft.processedAt), {
+export default function DraftCard({ draft, onApprove, onReject, isApprovePending, isRejectPending, disabled }: DraftCardProps) {
+  const timeAgo = formatDistanceToNow(new Date(draft.receivedAt ?? draft.processedAt), {
     addSuffix: true,
     locale: zhCN,
   })
@@ -47,7 +49,8 @@ export default function DraftCard({ draft, onApprove, onReject, isPending }: Dra
         <Button
           variant="danger"
           size="sm"
-          loading={isPending}
+          loading={isRejectPending}
+          disabled={disabled}
           onClick={() => onReject(draft.id)}
         >
           <XCircle className="h-3.5 w-3.5" />
@@ -56,7 +59,8 @@ export default function DraftCard({ draft, onApprove, onReject, isPending }: Dra
         <Button
           variant="primary"
           size="sm"
-          loading={isPending}
+          loading={isApprovePending}
+          disabled={disabled}
           onClick={() => onApprove(draft.id)}
         >
           <CheckCircle className="h-3.5 w-3.5" />
