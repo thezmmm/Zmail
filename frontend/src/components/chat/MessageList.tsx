@@ -17,9 +17,16 @@ export default function MessageList({
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Smooth-scroll when a new message is added (user send or assistant commit).
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length, streamingContent])
+  }, [messages.length])
+
+  // Instant-scroll on every streaming token to keep up without animation stutter.
+  useEffect(() => {
+    if (!streamingContent) return
+    bottomRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
+  }, [streamingContent])
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-4">

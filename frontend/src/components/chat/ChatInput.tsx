@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, KeyboardEvent } from 'react'
+import { useState, KeyboardEvent, FormEvent } from 'react'
 import { Send, Square } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -33,6 +33,13 @@ export default function ChatInput({
     }
   }
 
+  // Fallback for browsers that don't support field-sizing:content (non-Chrome)
+  function handleInput(e: FormEvent<HTMLTextAreaElement>) {
+    const el = e.currentTarget
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`
+  }
+
   return (
     <div className="border-t border-gray-800 px-6 py-4">
       <div className="flex items-end gap-2 rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 focus-within:border-gray-600">
@@ -40,6 +47,7 @@ export default function ChatInput({
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onInput={handleInput}
           placeholder="发送消息… (Enter 发送, Shift+Enter 换行)"
           disabled={disabled || isStreaming}
           rows={1}
