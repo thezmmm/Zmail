@@ -13,7 +13,7 @@ const actionLabels: Record<string, string> = {
 }
 
 export default function ResultCard({ result }: { result: ProcessingResult }) {
-  const timeAgo = formatDistanceToNow(new Date(result.processedAt), {
+  const timeAgo = formatDistanceToNow(new Date(result.receivedAt ?? result.processedAt), {
     addSuffix: true,
     locale: zhCN,
   })

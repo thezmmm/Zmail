@@ -33,5 +33,9 @@ export function useFlagEmail() {
 }
 
 export function useMarkReadEmail() {
-  return useMutation({ mutationFn: makeAction('read') })
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: makeAction('read'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['results'] }),
+  })
 }
