@@ -17,6 +17,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -44,9 +46,25 @@ public class SessionMemoryManager {
     private final AgentSessionRepository sessionRepo;
     private final AgentProperties props;
 
-    private final Set<String> seededSessions = ConcurrentHashMap.newKeySet();
+    private static final int MAX_TRACKED_SESSIONS = 2000;
+
+    /** LRU-bounded set: evicts the oldest entry when capacity is exceeded. */
+    private final Set<String> seededSessions = Collections.newSetFromMap(
+            Collections.synchronizedMap(new LinkedHashMap<>(MAX_TRACKED_SESSIONS, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, Boolean> eldest) {
+                    return size() > MAX_TRACKED_SESSIONS;
+                }
+            }));
+
     /** sessionId → total message count at the time of last compression. */
-    private final java.util.Map<String, Integer> lastCompressedTotal = new ConcurrentHashMap<>();
+    private final java.util.Map<String, Integer> lastCompressedTotal = Collections.synchronizedMap(
+            new LinkedHashMap<>(MAX_TRACKED_SESSIONS, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, Integer> eldest) {
+                    return size() > MAX_TRACKED_SESSIONS;
+                }
+            });
     private ConversationSummaryAgent summaryAgent;
 
     @PostConstruct

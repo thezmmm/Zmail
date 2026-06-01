@@ -33,6 +33,10 @@ public class DraftService {
         ProcessingResult result = load(userId, draftId);
         require(result, DraftStatus.PENDING_REVIEW);
 
+        if (result.getSender() == null) {
+            throw new IllegalStateException("Draft " + draftId + " has no sender address");
+        }
+
         result.setDraftStatus(DraftStatus.SENT);
         // saveAndFlush forces an immediate SQL UPDATE (with the @Version WHERE clause) before
         // the email is sent. If a concurrent request already committed its update, the version

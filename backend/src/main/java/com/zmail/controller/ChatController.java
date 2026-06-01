@@ -13,9 +13,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
 @RequestMapping("/agent")
@@ -29,15 +32,15 @@ public class ChatController {
     private final SessionMemoryManager sessionMemoryManager;
 
     public record ChatRequest(
-            String sessionId,
-            String message,
+            @NotBlank String sessionId,
+            @NotBlank String message,
             List<EmailRefDto> emails  // optional: selected emails
     ) {}
 
     public record EmailRefDto(String providerId, String accountId) {}
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@RequestBody ChatRequest req, Authentication auth) {
+    public SseEmitter chat(@Valid @RequestBody ChatRequest req, Authentication auth) {
         UUID userId = UUID.fromString(auth.getName());
         SseEmitter emitter = new SseEmitter(300_000L); // 5-min timeout
 
@@ -58,6 +61,7 @@ public class ChatController {
         mainAgentTools.registerContext(req.sessionId(), userId, refs);
 
         StringBuilder assistantResponse = new StringBuilder();
+        AtomicBoolean emitterDone = new AtomicBoolean(false);
 
         mainAgentService.chat(req.sessionId(), req.message())
                 .onPartialResponse(token -> {
@@ -65,7 +69,7 @@ public class ChatController {
                     try {
                         emitter.send(SseEmitter.event().name("token").data(token));
                     } catch (IOException e) {
-                        emitter.completeWithError(e);
+                        if (emitterDone.compareAndSet(false, true)) emitter.completeWithError(e);
                     }
                 })
                 .onCompleteResponse(response -> {
@@ -73,16 +77,18 @@ public class ChatController {
                             assistantResponse.toString());
                     mainAgentTools.clearContext(req.sessionId());
                     sessionMemoryManager.maybeCompress(session.getId(), userId);
-                    try {
-                        emitter.send(SseEmitter.event().name("done").data("[DONE]"));
-                    } catch (IOException ignored) {}
-                    emitter.complete();
+                    if (emitterDone.compareAndSet(false, true)) {
+                        try {
+                            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                        } catch (IOException ignored) {}
+                        emitter.complete();
+                    }
                     log.debug("Chat complete for session {}", req.sessionId());
                 })
                 .onError(err -> {
                     mainAgentTools.clearContext(req.sessionId());
                     log.error("Chat error for session {}: {}", req.sessionId(), err.getMessage());
-                    emitter.completeWithError(err);
+                    if (emitterDone.compareAndSet(false, true)) emitter.completeWithError(err);
                 })
                 .start();
 

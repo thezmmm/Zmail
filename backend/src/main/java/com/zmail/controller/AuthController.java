@@ -128,8 +128,19 @@ public class AuthController {
         OffsetDateTime tokenExpiry = OffsetDateTime.now().plusSeconds(expiresIn);
 
         // Parse user info from id_token JWT payload — avoids a second HTTP call
-        Map<String, Object> userInfo = decodeIdToken((String) tokenData.get("id_token"));
+        String rawIdToken = (String) tokenData.get("id_token");
+        if (rawIdToken == null) {
+            log.error("Google token response missing id_token");
+            response.sendError(HttpServletResponse.SC_BAD_GATEWAY, "id_token missing from Google response");
+            return;
+        }
+        Map<String, Object> userInfo = decodeIdToken(rawIdToken);
         String email = (String) userInfo.get("email");
+        if (email == null) {
+            log.error("Google id_token missing email claim");
+            response.sendError(HttpServletResponse.SC_BAD_GATEWAY, "email claim missing from id_token");
+            return;
+        }
         String name  = (String) userInfo.get("name");
 
         if (linkUserId.isPresent()) {
