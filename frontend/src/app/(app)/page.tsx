@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useResults } from '@/hooks/useResults'
 import ResultCard from '@/components/email/ResultCard'
 import EmptyState from '@/components/ui/EmptyState'
@@ -23,6 +23,12 @@ export default function InboxPage() {
     useResults(category)
 
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const listRef     = useRef<HTMLDivElement>(null)
+
+  // Scroll list back to top whenever the category filter changes
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0 })
+  }, [category])
 
   // Trigger next page when sentinel enters viewport
   useEffect(() => {
@@ -40,11 +46,11 @@ export default function InboxPage() {
     return () => observer.disconnect()
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  const results = [
+  const results = useMemo(() => [
     ...new Map(
       (data?.pages.flatMap(p => p.content) ?? []).map(r => [r.id, r]),
     ).values(),
-  ]
+  ], [data])
 
   return (
     <div className="flex h-full flex-col">
@@ -70,7 +76,7 @@ export default function InboxPage() {
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div ref={listRef} className="flex-1 overflow-y-auto px-6 py-4">
         {isLoading ? (
           <div className="flex justify-center pt-20"><Spinner /></div>
         ) : isError ? (
