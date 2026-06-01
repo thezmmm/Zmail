@@ -78,7 +78,10 @@ export default function EmailDetailClient() {
     }
   }, [result?.id, result?.analyzed]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const current: ProcessingResult | undefined = analyze.data ?? result
+  // Prefer the query cache (result) over the mutation snapshot (analyze.data):
+  // - useAnalyzeResult.onSuccess already writes to ['results', id], so result stays fresh
+  // - Approve/reject optimistic updates write to ['results', id], so they surface immediately
+  const current: ProcessingResult | undefined = result ?? analyze.data
 
   if (isLoading) {
     return (
@@ -208,8 +211,30 @@ export default function EmailDetailClient() {
         )}
 
         {/* 草稿 */}
-        {current.draftStatus === 'PENDING_REVIEW' && current.replyDraft && (
-          <div className="rounded-xl border border-blue-800/50 bg-blue-950/30 p-3.5">
+        {generateDraft.isPending ? (
+          /* 生成中：骨架屏占位，避免按钮点击后毫无反馈 */
+          <div className="animate-pulse rounded-xl border border-blue-800/30 bg-blue-950/20 p-3.5">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="h-2.5 w-16 rounded bg-blue-900/50" />
+              <div className="flex gap-1">
+                <div className="h-6 w-10 rounded-md bg-gray-800/70" />
+                <div className="h-6 w-14 rounded-md bg-gray-800/70" />
+              </div>
+            </div>
+            <div className="space-y-2 rounded-lg bg-gray-900/60 p-3">
+              <div className="h-2 w-full rounded bg-gray-700/60" />
+              <div className="h-2 w-10/12 rounded bg-gray-700/60" />
+              <div className="h-2 w-11/12 rounded bg-gray-700/60" />
+              <div className="h-2 w-8/12 rounded bg-gray-700/60" />
+              <div className="h-2 w-full rounded bg-gray-700/60" />
+              <div className="h-2 w-9/12 rounded bg-gray-700/60" />
+            </div>
+          </div>
+        ) : current.draftStatus === 'PENDING_REVIEW' && current.replyDraft ? (
+          <div className={cn(
+            'rounded-xl border border-blue-800/50 bg-blue-950/30 p-3.5 transition-opacity duration-150',
+            (approve.isPending || reject.isPending) && 'pointer-events-none opacity-50',
+          )}>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400">草稿待审批</p>
               <div className="flex gap-1">
@@ -227,27 +252,22 @@ export default function EmailDetailClient() {
               {current.replyDraft}
             </pre>
           </div>
-        )}
-        {current.draftStatus === 'SENT' && (
+        ) : current.draftStatus === 'SENT' ? (
           <p className="text-xs text-green-400">草稿已发送</p>
-        )}
-        {current.draftStatus === 'REJECTED' && (
+        ) : current.draftStatus === 'REJECTED' ? (
           <div className="flex items-center gap-3">
             <p className="text-xs text-gray-500">草稿已拒绝</p>
-            <Button variant="secondary" size="sm" loading={generateDraft.isPending}
-              onClick={() => generateDraft.mutate()}>
+            <Button variant="secondary" size="sm" onClick={() => generateDraft.mutate()}>
               <FileText className="h-3 w-3" />重新生成
             </Button>
           </div>
-        )}
-        {!current.replyDraft && current.draftStatus !== 'SENT' && (
+        ) : !current.replyDraft ? (
           <div>
-            <Button variant="secondary" size="sm" loading={generateDraft.isPending}
-              onClick={() => generateDraft.mutate()}>
+            <Button variant="secondary" size="sm" onClick={() => generateDraft.mutate()}>
               <FileText className="h-3.5 w-3.5" />生成草稿
             </Button>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ── 原文（撑满剩余高度，独立滚动，隐藏滚动条） ── */}

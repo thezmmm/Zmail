@@ -1,5 +1,6 @@
 import { ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
+import Spinner from './Spinner'
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost'
 type Size = 'sm' | 'md'
@@ -22,6 +23,11 @@ const sizeStyles: Record<Size, string> = {
   md: 'px-4 py-2 text-sm',
 }
 
+const spinnerSizeStyles: Record<Size, string> = {
+  sm: 'h-3.5 w-3.5',
+  md: 'h-4 w-4',
+}
+
 export default function Button({
   variant = 'secondary',
   size = 'md',
@@ -42,7 +48,12 @@ export default function Button({
       )}
       {...props}
     >
-      {children}
+      {loading && <Spinner className={spinnerSizeStyles[size]} />}
+      {/* display:contents makes the span layout-transparent; [&>svg]:hidden hides the icon
+          passed as first child so it doesn't appear alongside the spinner */}
+      <span className={cn('contents', loading && '[&>svg]:hidden')}>
+        {children}
+      </span>
     </button>
   )
 }
