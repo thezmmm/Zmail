@@ -29,7 +29,7 @@ public class DraftService {
     }
 
     @Transactional
-    public void approve(UUID userId, UUID draftId) {
+    public ProcessingResult approve(UUID userId, UUID draftId) {
         ProcessingResult result = load(userId, draftId);
         require(result, DraftStatus.PENDING_REVIEW);
 
@@ -42,7 +42,7 @@ public class DraftService {
         // the email is sent. If a concurrent request already committed its update, the version
         // will have changed and Spring throws ObjectOptimisticLockingFailureException here,
         // rolling back the transaction without sending the email.
-        repository.saveAndFlush(result);
+        ProcessingResult saved = repository.saveAndFlush(result);
 
         EmailDraft draft = new EmailDraft(
                 List.of(result.getSender()),
@@ -51,14 +51,16 @@ public class DraftService {
 
         emailService.send(userId, result.getAccountId(), draft);
         log.info("Draft {} approved and sent for user {}", draftId, userId);
+        return saved;
     }
 
     @Transactional
-    public void reject(UUID userId, UUID draftId) {
+    public ProcessingResult reject(UUID userId, UUID draftId) {
         ProcessingResult result = load(userId, draftId);
         require(result, DraftStatus.PENDING_REVIEW);
         result.setDraftStatus(DraftStatus.REJECTED);
         log.info("Draft {} rejected for user {}", draftId, userId);
+        return repository.save(result);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

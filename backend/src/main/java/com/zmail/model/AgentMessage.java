@@ -24,6 +24,10 @@ public class AgentMessage {
     @JoinColumn(name = "session_id", nullable = false)
     private AgentSession session;
 
+    /** Direct FK read — avoids proxy initialization in DTOs. */
+    @Column(name = "session_id", insertable = false, updatable = false)
+    private UUID sessionId;
+
     /** USER or ASSISTANT */
     @Column(nullable = false, length = 20)
     private String role;

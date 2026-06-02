@@ -32,21 +32,21 @@ public class DraftController {
 
     /** Approve a draft — sends the email. */
     @PostMapping("/{id}/approve")
-    public ResponseEntity<ApiResponse<Void>> approve(
+    public ResponseEntity<ApiResponse<ProcessingResult>> approve(
             Authentication auth,
             @PathVariable UUID id) {
 
-        draftService.approve(UUID.fromString(auth.getName()), id);
-        return ResponseEntity.ok(ApiResponse.ok(null));
+        ProcessingResult result = draftService.approve(UUID.fromString(auth.getName()), id);
+        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
     /** Reject a draft — marks it rejected, email not sent. */
     @PostMapping("/{id}/reject")
-    public ResponseEntity<ApiResponse<Void>> reject(
+    public ResponseEntity<ApiResponse<ProcessingResult>> reject(
             Authentication auth,
             @PathVariable UUID id) {
 
-        draftService.reject(UUID.fromString(auth.getName()), id);
-        return ResponseEntity.ok(ApiResponse.ok(null));
+        ProcessingResult result = draftService.reject(UUID.fromString(auth.getName()), id);
+        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 }

@@ -27,7 +27,7 @@ public class SessionController {
     public record CreateSessionRequest(String title) {}
 
     public record SessionDto(UUID id, String title, OffsetDateTime createdAt, OffsetDateTime updatedAt) {}
-    public record MessageDto(UUID id, String role, String content, OffsetDateTime createdAt) {}
+    public record MessageDto(UUID id, UUID sessionId, String role, String content, OffsetDateTime createdAt) {}
     public record SessionDetailDto(SessionDto session, List<MessageDto> messages) {}
 
     @PostMapping
@@ -83,6 +83,6 @@ public class SessionController {
     }
 
     private MessageDto toDto(AgentMessage m) {
-        return new MessageDto(m.getId(), m.getRole(), m.getContent(), m.getCreatedAt());
+        return new MessageDto(m.getId(), m.getSessionId(), m.getRole(), m.getContent(), m.getCreatedAt());
     }
 }
