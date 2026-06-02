@@ -79,6 +79,10 @@ CREATE INDEX IF NOT EXISTS idx_pr_user_id      ON processing_results(user_id);
 CREATE INDEX IF NOT EXISTS idx_pr_received_at  ON processing_results(received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_processed_at ON processing_results(processed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_draft_status ON processing_results(draft_status);
+-- Composite indexes for efficient keyset pagination
+CREATE INDEX IF NOT EXISTS idx_pr_user_received ON processing_results(user_id, received_at DESC NULLS LAST, id ASC);
+CREATE INDEX IF NOT EXISTS idx_pr_user_category ON processing_results(user_id, category, received_at DESC NULLS LAST, id ASC);
+CREATE INDEX IF NOT EXISTS idx_pr_user_draft    ON processing_results(user_id, draft_status) WHERE draft_status IS NOT NULL;
 
 -- ── pgvector table for email content embeddings ───────────────────────────────
 
