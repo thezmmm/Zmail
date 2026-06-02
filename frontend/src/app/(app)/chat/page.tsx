@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useSessions, useMessages, useCreateSession } from '@/hooks/useSessions'
+import { useSessions, useMessages, useCreateSession, useDeleteSession } from '@/hooks/useSessions'
 import { useChat } from '@/hooks/useChat'
 import SessionList from '@/components/chat/SessionList'
 import MessageList from '@/components/chat/MessageList'
@@ -15,11 +15,17 @@ export default function ChatPage() {
   const { data: sessions = [], isLoading: sessionsLoading } = useSessions()
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedSessionId)
   const createSession = useCreateSession()
+  const deleteSession = useDeleteSession()
   const { sendMessage, isStreaming, streamingContent, abort } = useChat(selectedSessionId)
 
   async function handleNewSession() {
     const session = await createSession.mutateAsync()
     setSelectedSessionId(session.id)
+  }
+
+  function handleDeleteSession(id: string) {
+    if (selectedSessionId === id) setSelectedSessionId(null)
+    deleteSession.mutate(id)
   }
 
   return (
@@ -35,7 +41,9 @@ export default function ChatPage() {
           selectedId={selectedSessionId}
           onSelect={setSelectedSessionId}
           onNew={handleNewSession}
+          onDelete={handleDeleteSession}
           isCreating={createSession.isPending}
+          isDeletingId={deleteSession.isPending ? (deleteSession.variables ?? null) : null}
         />
       )}
 
