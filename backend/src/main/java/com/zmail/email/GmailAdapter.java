@@ -98,9 +98,28 @@ public class GmailAdapter implements EmailPort {
     public void send(EmailAccount account, EmailDraft draft) {
         try {
             Gmail service = buildService(account);
-            String raw = buildRawEmail(account.getAccountEmail(), draft.to(), draft.subject(), draft.body());
             Message message = new Message();
-            message.setRaw(raw);
+
+            if (draft.replyToProviderId() != null) {
+                // Fetch original message metadata for threading headers
+                Message original = service.users().messages()
+                        .get("me", draft.replyToProviderId())
+                        .setFormat("metadata")
+                        .setMetadataHeaders(List.of("Message-ID", "References"))
+                        .execute();
+                List<MessagePartHeader> origHeaders = original.getPayload() != null
+                        ? original.getPayload().getHeaders() : List.of();
+                String inReplyTo = getHeader(origHeaders, "Message-ID");
+                String existingRefs = getHeader(origHeaders, "References");
+                String references = existingRefs.isBlank() ? inReplyTo : existingRefs + " " + inReplyTo;
+                message.setThreadId(original.getThreadId());
+                message.setRaw(buildRawEmail(account.getAccountEmail(), draft.to(),
+                        draft.subject(), draft.body(), inReplyTo, references));
+            } else {
+                message.setRaw(buildRawEmail(account.getAccountEmail(), draft.to(),
+                        draft.subject(), draft.body(), null, null));
+            }
+
             service.users().messages().send("me", message).execute();
         } catch (Exception e) {
             throw new RuntimeException("Failed to send Gmail message", e);
@@ -228,19 +247,27 @@ public class GmailAdapter implements EmailPort {
         return new String(Base64.getUrlDecoder().decode(base64url), StandardCharsets.UTF_8);
     }
 
-    private String buildRawEmail(String from, List<String> to, String subject, String body) {
+    private String buildRawEmail(String from, List<String> to, String subject, String body,
+                                  String inReplyTo, String references) {
         String encodedSubject = "=?UTF-8?B?"
                 + Base64.getEncoder().encodeToString(subject.getBytes(StandardCharsets.UTF_8))
                 + "?=";
-        String raw = "From: " + from + "\r\n"
-                + "To: " + String.join(", ", to) + "\r\n"
-                + "Subject: " + encodedSubject + "\r\n"
-                + "MIME-Version: 1.0\r\n"
-                + "Content-Type: text/plain; charset=UTF-8\r\n"
-                + "Content-Transfer-Encoding: base64\r\n"
-                + "\r\n"
-                + Base64.getMimeEncoder().encodeToString(body.getBytes(StandardCharsets.UTF_8));
+        StringBuilder raw = new StringBuilder();
+        raw.append("From: ").append(from).append("\r\n");
+        raw.append("To: ").append(String.join(", ", to)).append("\r\n");
+        raw.append("Subject: ").append(encodedSubject).append("\r\n");
+        if (inReplyTo != null && !inReplyTo.isBlank()) {
+            raw.append("In-Reply-To: ").append(inReplyTo).append("\r\n");
+        }
+        if (references != null && !references.isBlank()) {
+            raw.append("References: ").append(references).append("\r\n");
+        }
+        raw.append("MIME-Version: 1.0\r\n");
+        raw.append("Content-Type: text/plain; charset=UTF-8\r\n");
+        raw.append("Content-Transfer-Encoding: base64\r\n");
+        raw.append("\r\n");
+        raw.append(Base64.getMimeEncoder().encodeToString(body.getBytes(StandardCharsets.UTF_8)));
         return Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+                .encodeToString(raw.toString().getBytes(StandardCharsets.UTF_8));
     }
 }

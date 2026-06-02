@@ -76,7 +76,7 @@ public class EmailController {
             Authentication auth) {
         UUID userId = UUID.fromString(auth.getName());
         emailService.send(userId, req.accountId(),
-                new EmailDraft(req.to(), req.subject(), req.body()));
+                EmailDraft.compose(req.to(), req.subject(), req.body()));
         return ResponseEntity.ok(ApiResponse.ok());
     }
 

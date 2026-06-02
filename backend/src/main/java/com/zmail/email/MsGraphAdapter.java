@@ -10,6 +10,7 @@ import com.microsoft.graph.models.MessageCollectionResponse;
 import com.microsoft.graph.models.Recipient;
 import com.microsoft.graph.serviceclient.GraphServiceClient;
 import com.microsoft.graph.users.item.messages.item.move.MovePostRequestBody;
+import com.microsoft.graph.users.item.messages.item.reply.ReplyPostRequestBody;
 import com.microsoft.graph.users.item.sendmail.SendMailPostRequestBody;
 import com.microsoft.kiota.authentication.AccessTokenProvider;
 import com.microsoft.kiota.authentication.AllowedHostsValidator;
@@ -89,26 +90,40 @@ public class MsGraphAdapter implements EmailPort {
     public void send(EmailAccount account, EmailDraft draft) {
         GraphServiceClient client = buildClient(account);
 
-        Message message = new Message();
-        message.setSubject(draft.subject());
+        if (draft.replyToProviderId() != null) {
+            // Use the dedicated reply endpoint so Graph API sets threading headers automatically
+            ItemBody replyItemBody = new ItemBody();
+            replyItemBody.setContentType(BodyType.Text);
+            replyItemBody.setContent(draft.body());
 
-        ItemBody itemBody = new ItemBody();
-        itemBody.setContentType(BodyType.Text);
-        itemBody.setContent(draft.body());
-        message.setBody(itemBody);
+            Message replyMessage = new Message();
+            replyMessage.setBody(replyItemBody);
 
-        message.setToRecipients(draft.to().stream().map(addr -> {
-            EmailAddress ea = new EmailAddress();
-            ea.setAddress(addr);
-            Recipient r = new Recipient();
-            r.setEmailAddress(ea);
-            return r;
-        }).collect(Collectors.toList()));
+            ReplyPostRequestBody replyBody = new ReplyPostRequestBody();
+            replyBody.setMessage(replyMessage);
+            client.me().messages().byMessageId(draft.replyToProviderId()).reply().post(replyBody);
+        } else {
+            Message message = new Message();
+            message.setSubject(draft.subject());
 
-        SendMailPostRequestBody sendBody = new SendMailPostRequestBody();
-        sendBody.setMessage(message);
-        sendBody.setSaveToSentItems(true);
-        client.me().sendMail().post(sendBody);
+            ItemBody itemBody = new ItemBody();
+            itemBody.setContentType(BodyType.Text);
+            itemBody.setContent(draft.body());
+            message.setBody(itemBody);
+
+            message.setToRecipients(draft.to().stream().map(addr -> {
+                EmailAddress ea = new EmailAddress();
+                ea.setAddress(addr);
+                Recipient r = new Recipient();
+                r.setEmailAddress(ea);
+                return r;
+            }).collect(Collectors.toList()));
+
+            SendMailPostRequestBody sendBody = new SendMailPostRequestBody();
+            sendBody.setMessage(message);
+            sendBody.setSaveToSentItems(true);
+            client.me().sendMail().post(sendBody);
+        }
     }
 
     @Override
