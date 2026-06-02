@@ -244,7 +244,7 @@ export default function EmailDetailClient() {
                   <XCircle className="h-3 w-3" />拒绝
                 </Button>
                 <Button variant="primary" size="sm" loading={approve.isPending}
-                  onClick={() => approve.mutate(current.id)}>
+                  onClick={() => approve.mutate({ id: current.id })}>
                   <CheckCircle className="h-3 w-3" />批准发送
                 </Button>
               </div>

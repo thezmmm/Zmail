@@ -1,14 +1,14 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '@/lib/api'
-import type { ApiResponse, PagedResponse, ProcessingResult } from '@/types'
+import type { ApiResponse, CreateDraftRequest, Draft, PagedResponse } from '@/types'
 
 export function usePendingDrafts() {
   return useInfiniteQuery({
     queryKey: ['drafts', 'pending'],
     queryFn: ({ pageParam }) =>
       api
-        .get<ApiResponse<PagedResponse<ProcessingResult>>>('/drafts/pending', {
+        .get<ApiResponse<PagedResponse<Draft>>>('/drafts/pending', {
           params: { page: pageParam, size: 20 },
         })
         .then(r => r.data.data!),
@@ -17,43 +17,60 @@ export function usePendingDrafts() {
   })
 }
 
+export function useCreateDraft() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (req: CreateDraftRequest) =>
+      api
+        .post<ApiResponse<Draft>>('/drafts', req)
+        .then(r => r.data.data!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drafts'] })
+      toast.success('草稿已保存')
+    },
+    onError: () => toast.error('保存草稿失败'),
+  })
+}
+
+export function useUpdateDraft() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body, subject }: { id: string; body?: string; subject?: string }) =>
+      api
+        .patch<ApiResponse<Draft>>(`/drafts/${id}`, { body, subject })
+        .then(r => r.data.data!),
+    onSuccess: (data) => {
+      qc.setQueryData<Draft>(['draft', data.id], data)
+    },
+    onError: () => toast.error('保存草稿失败'),
+  })
+}
+
 export function useApproveDraft() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ id, body }: { id: string; body?: string }) =>
       api
-        .post<ApiResponse<ProcessingResult>>(`/drafts/${id}/approve`)
+        .post<ApiResponse<Draft>>(`/drafts/${id}/approve`, body != null ? { body } : null)
         .then(r => r.data.data!),
-    onMutate: async id => {
+    onMutate: async ({ id }) => {
       await qc.cancelQueries({ queryKey: ['drafts', 'pending'] })
-      await qc.cancelQueries({ queryKey: ['results', id] })
       const snapshot = qc.getQueryData(['drafts', 'pending'])
-      const resultSnapshot = qc.getQueryData<ProcessingResult>(['results', id])
-      qc.setQueryData(['drafts', 'pending'], (old: { pages: { content: ProcessingResult[] }[] }) => ({
+      qc.setQueryData(['drafts', 'pending'], (old: { pages: { content: Draft[] }[] }) => ({
         ...old,
         pages: old?.pages.map(p => ({
           ...p,
-          content: p.content.filter(r => r.id !== id),
+          content: p.content.filter(d => d.id !== id),
         })),
       }))
-      qc.setQueryData<ProcessingResult>(['results', id], old =>
-        old ? { ...old, draftStatus: 'SENT' } : old,
-      )
-      return { snapshot, resultSnapshot }
+      return { snapshot }
     },
-    onSuccess: (data, id) => {
-      qc.setQueryData<ProcessingResult>(['results', id], data)
-      toast.success('草稿已发送')
-    },
-    onError: (_err, id, ctx) => {
+    onSuccess: () => toast.success('草稿已发送'),
+    onError: (_err, _vars, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(['drafts', 'pending'], ctx.snapshot)
-      if (ctx?.resultSnapshot) qc.setQueryData(['results', id], ctx.resultSnapshot)
       toast.error('发送失败，请重试')
     },
-    onSettled: (_data, _err, id) => {
-      qc.invalidateQueries({ queryKey: ['drafts'] })
-      qc.invalidateQueries({ queryKey: ['results', id] })
-    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['drafts'] }),
   })
 }
 
@@ -62,37 +79,25 @@ export function useRejectDraft() {
   return useMutation({
     mutationFn: (id: string) =>
       api
-        .post<ApiResponse<ProcessingResult>>(`/drafts/${id}/reject`)
+        .post<ApiResponse<Draft>>(`/drafts/${id}/reject`)
         .then(r => r.data.data!),
     onMutate: async id => {
       await qc.cancelQueries({ queryKey: ['drafts', 'pending'] })
-      await qc.cancelQueries({ queryKey: ['results', id] })
       const snapshot = qc.getQueryData(['drafts', 'pending'])
-      const resultSnapshot = qc.getQueryData<ProcessingResult>(['results', id])
-      qc.setQueryData(['drafts', 'pending'], (old: { pages: { content: ProcessingResult[] }[] }) => ({
+      qc.setQueryData(['drafts', 'pending'], (old: { pages: { content: Draft[] }[] }) => ({
         ...old,
         pages: old?.pages.map(p => ({
           ...p,
-          content: p.content.filter(r => r.id !== id),
+          content: p.content.filter(d => d.id !== id),
         })),
       }))
-      qc.setQueryData<ProcessingResult>(['results', id], old =>
-        old ? { ...old, draftStatus: 'REJECTED' } : old,
-      )
-      return { snapshot, resultSnapshot }
+      return { snapshot }
     },
-    onSuccess: (data, id) => {
-      qc.setQueryData<ProcessingResult>(['results', id], data)
-      toast.success('草稿已拒绝')
-    },
-    onError: (_err, id, ctx) => {
+    onSuccess: () => toast.success('草稿已拒绝'),
+    onError: (_err, _id, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(['drafts', 'pending'], ctx.snapshot)
-      if (ctx?.resultSnapshot) qc.setQueryData(['results', id], ctx.resultSnapshot)
       toast.error('操作失败，请重试')
     },
-    onSettled: (_data, _err, id) => {
-      qc.invalidateQueries({ queryKey: ['drafts'] })
-      qc.invalidateQueries({ queryKey: ['results', id] })
-    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['drafts'] }),
   })
 }

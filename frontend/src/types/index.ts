@@ -17,6 +17,7 @@ export interface PagedResponse<T> {
 export type EmailProvider = 'GMAIL' | 'MSGRAPH'
 export type SyncStatus = 'RUNNING' | 'DONE' | 'FAILED'
 export type DraftStatus = 'PENDING_REVIEW' | 'SENT' | 'REJECTED'
+export type DraftSource = 'AI' | 'USER'
 export type Priority = 'HIGH' | 'MEDIUM' | 'LOW'
 export type Sentiment = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE'
 export type Category = 'WORK' | 'PERSONAL' | 'FINANCE' | 'PROMOTIONS' | 'OTHER'
@@ -94,6 +95,27 @@ export interface EmailMessage {
 export interface EmailRef {
   providerId: string
   accountId: string
+}
+
+export interface Draft {
+  id: string
+  accountId: string
+  source: DraftSource
+  status: DraftStatus
+  to: string[]
+  subject: string | null
+  body: string
+  replyToProviderId: string | null
+  resultId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateDraftRequest {
+  accountId: string
+  to: string[]
+  subject: string
+  body: string
 }
 
 export interface ChatRequest {

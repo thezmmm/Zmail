@@ -17,7 +17,7 @@ import { useUser } from '@/hooks/useUser'
 import { clearToken } from '@/lib/auth'
 import { useUiStore } from '@/stores/uiStore'
 import api from '@/lib/api'
-import type { ApiResponse, PagedResponse, ProcessingResult } from '@/types'
+import type { ApiResponse, Draft, PagedResponse } from '@/types'
 
 const navItems = [
   { href: '/',         label: '收件箱',     icon: Inbox },
@@ -36,7 +36,7 @@ export default function Sidebar() {
     queryKey: ['drafts', 'pending', 'count'],
     queryFn: () =>
       api
-        .get<ApiResponse<PagedResponse<ProcessingResult>>>('/drafts/pending', {
+        .get<ApiResponse<PagedResponse<Draft>>>('/drafts/pending', {
           params: { size: 1 },
         })
         .then(r => r.data.data?.totalElements ?? 0),
