@@ -1,5 +1,6 @@
 'use client'
 
+import { toast } from 'sonner'
 import {
   useAccounts,
   useSyncStatus,
@@ -24,20 +25,31 @@ export default function AccountsPage() {
   const msgraphLink   = useMsgraphLinkUrl()
 
   async function addGmail() {
-    const url = await gmailLink.mutateAsync()
-    window.location.href = url
+    try {
+      const url = await gmailLink.mutateAsync()
+      window.location.href = url
+    } catch {
+      toast.error('获取 Gmail 授权链接失败')
+    }
   }
 
   async function addOutlook() {
-    const url = await msgraphLink.mutateAsync()
-    window.location.href = url
+    try {
+      const url = await msgraphLink.mutateAsync()
+      window.location.href = url
+    } catch {
+      toast.error('获取 Outlook 授权链接失败')
+    }
   }
 
   async function handleReauth(accountId: string) {
-    const dto = await reauthAccount.mutateAsync(accountId)
-    // loginPath is e.g. "/auth/gmail/login" — redirect via the backend base URL
-    const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1'
-    window.location.href = `${base}${dto.loginPath}`
+    try {
+      const dto = await reauthAccount.mutateAsync(accountId)
+      const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1'
+      window.location.href = `${base}${dto.loginPath}`
+    } catch {
+      toast.error('获取重授权链接失败')
+    }
   }
 
   return (

@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import api from '@/lib/api'
-import type { ApiResponse, DraftStatus, PagedResponse, ProcessingResult } from '@/types'
+import type { ApiResponse, PagedResponse, ProcessingResult } from '@/types'
 
 export function usePendingDrafts() {
   return useInfiniteQuery({
@@ -36,13 +37,18 @@ export function useApproveDraft() {
         })),
       }))
       qc.setQueryData<ProcessingResult>(['results', id], old =>
-        old ? { ...old, draftStatus: 'SENT' as DraftStatus } : old,
+        old ? { ...old, draftStatus: 'SENT' } : old,
       )
       return { snapshot, resultSnapshot }
+    },
+    onSuccess: (data, id) => {
+      qc.setQueryData<ProcessingResult>(['results', id], data)
+      toast.success('草稿已发送')
     },
     onError: (_err, id, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(['drafts', 'pending'], ctx.snapshot)
       if (ctx?.resultSnapshot) qc.setQueryData(['results', id], ctx.resultSnapshot)
+      toast.error('发送失败，请重试')
     },
     onSettled: (_data, _err, id) => {
       qc.invalidateQueries({ queryKey: ['drafts'] })
@@ -71,13 +77,18 @@ export function useRejectDraft() {
         })),
       }))
       qc.setQueryData<ProcessingResult>(['results', id], old =>
-        old ? { ...old, draftStatus: 'REJECTED' as DraftStatus } : old,
+        old ? { ...old, draftStatus: 'REJECTED' } : old,
       )
       return { snapshot, resultSnapshot }
+    },
+    onSuccess: (data, id) => {
+      qc.setQueryData<ProcessingResult>(['results', id], data)
+      toast.success('草稿已拒绝')
     },
     onError: (_err, id, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(['drafts', 'pending'], ctx.snapshot)
       if (ctx?.resultSnapshot) qc.setQueryData(['results', id], ctx.resultSnapshot)
+      toast.error('操作失败，请重试')
     },
     onSettled: (_data, _err, id) => {
       qc.invalidateQueries({ queryKey: ['drafts'] })

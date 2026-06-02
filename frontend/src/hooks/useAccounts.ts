@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import api from '@/lib/api'
 import type { AccountDto, ApiResponse, ReauthDto, SyncStatus } from '@/types'
 
@@ -36,8 +37,10 @@ export function useDeleteAccount() {
       )
       return { snapshot }
     },
+    onSuccess: () => toast.success('账户已移除'),
     onError: (_err, _id, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(['accounts'], ctx.snapshot)
+      toast.error('移除账户失败')
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['accounts'] })
