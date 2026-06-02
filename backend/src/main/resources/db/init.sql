@@ -84,6 +84,27 @@ CREATE INDEX IF NOT EXISTS idx_pr_user_received ON processing_results(user_id, r
 CREATE INDEX IF NOT EXISTS idx_pr_user_category ON processing_results(user_id, category, received_at DESC NULLS LAST, id ASC);
 CREATE INDEX IF NOT EXISTS idx_pr_user_draft    ON processing_results(user_id, draft_status) WHERE draft_status IS NOT NULL;
 
+-- ── Unified drafts (AI-generated + user-composed) ────────────────────────────
+
+CREATE TABLE IF NOT EXISTS drafts (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version               BIGINT NOT NULL DEFAULT 0,
+    user_id               UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id            UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+    source                VARCHAR(10) NOT NULL CHECK (source IN ('AI', 'USER')),
+    status                VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW'
+                              CHECK (status IN ('PENDING_REVIEW', 'SENT', 'REJECTED')),
+    to_addresses          TEXT NOT NULL,
+    subject               TEXT,
+    body                  TEXT NOT NULL DEFAULT '',
+    reply_to_provider_id  VARCHAR(255),
+    result_id             UUID REFERENCES processing_results(id) ON DELETE SET NULL,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_drafts_user_status ON drafts(user_id, status, created_at DESC);
+
 -- ── pgvector table for email content embeddings ───────────────────────────────
 
 CREATE TABLE IF NOT EXISTS email_embeddings (
