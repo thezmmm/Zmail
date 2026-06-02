@@ -43,6 +43,7 @@ public class EmailProcessingService {
     private final ActionAgentService actionAgentService;
     private final LlmRetryHelper retry;
     private final EmailEmbeddingService emailEmbeddingService;
+    private final DraftService draftService;
 
     private static final int BODY_LIMIT = 3000;
 
@@ -138,10 +139,18 @@ public class EmailProcessingService {
         if (!result.getUserId().equals(userId)) throw new SecurityException("Access denied");
 
         EmailRef ref = new EmailRef(result.getEmailProviderId(), result.getAccountId());
-        String draft = actionAgentService.draftReply(userId, ref, "Draft a professional reply to this email.");
-        result.setReplyDraft(draft);
+        String draftBody = actionAgentService.draftReply(userId, ref, "Draft a professional reply to this email.");
+        result.setReplyDraft(draftBody);
         result.setDraftStatus(DraftStatus.PENDING_REVIEW);
-        return resultRepository.save(result);
+        ProcessingResult saved = resultRepository.save(result);
+
+        // Create a unified Draft record so this draft appears on the drafts page
+        String replySubject = "Re: " + (result.getSubject() != null ? result.getSubject() : "");
+        draftService.createFromResult(userId, result.getAccountId(),
+                result.getSender(), replySubject, draftBody,
+                result.getEmailProviderId(), resultId);
+
+        return saved;
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────
