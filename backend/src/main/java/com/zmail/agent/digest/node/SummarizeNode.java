@@ -5,7 +5,6 @@ import com.zmail.agent.digest.DigestAgentState;
 import com.zmail.agent.model.SummaryResult;
 import com.zmail.email.EmailMeta;
 import com.zmail.email.EmailMessage;
-import com.zmail.service.EmailService;
 import com.zmail.service.LlmRetryHelper;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.RequiredArgsConstructor;
@@ -14,11 +13,7 @@ import org.bsc.langgraph4j.action.NodeAction;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -30,7 +25,6 @@ public class SummarizeNode implements NodeAction<DigestAgentState> {
     @Qualifier("summarizeModel")
     private final ChatLanguageModel summarizeModel;
     private final ObjectMapper      objectMapper;
-    private final EmailService      emailService;
     private final LlmRetryHelper    retry;
 
     @Qualifier("agentExecutor")
@@ -40,19 +34,25 @@ public class SummarizeNode implements NodeAction<DigestAgentState> {
 
     @Override
     public Map<String, Object> apply(DigestAgentState state) throws Exception {
-        UUID userId = state.userId();
-        Map<String, EmailMeta> metaMap = state.emailMetaMap();
+        Map<String, EmailMeta>    metaMap     = state.emailMetaMap();
+        Map<String, String>       bodiesMap   = state.emailBodies();
+        Map<String, SummaryResult> preSummaries = state.preSummaries();
 
-        // ── Submit all summarize tasks concurrently ───────────────────────────
         List<String> ids = new ArrayList<>(state.emailIds());
         List<CompletableFuture<SummaryResult>> futures = ids.stream()
                 .map(id -> {
+                    // Use existing DB summary — no LLM call needed
+                    if (preSummaries.containsKey(id)) {
+                        return CompletableFuture.completedFuture(preSummaries.get(id));
+                    }
                     EmailMeta meta = metaMap.get(id);
                     if (meta == null) {
                         return CompletableFuture.completedFuture(SummaryResult.defaultResult());
                     }
+                    // Body already in state — no second API fetch needed
+                    String body = bodiesMap.getOrDefault(id, "");
                     return CompletableFuture
-                            .supplyAsync(() -> summarizeOne(userId, meta), executor)
+                            .supplyAsync(() -> summarizeOne(meta, body), executor)
                             .exceptionally(ex -> {
                                 log.error("Summarize failed for {}: {}", id, ex.getMessage());
                                 return SummaryResult.defaultResult();
@@ -60,7 +60,6 @@ public class SummarizeNode implements NodeAction<DigestAgentState> {
                 })
                 .toList();
 
-        // ── Wait for all and collect ──────────────────────────────────────────
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         Map<String, SummaryResult> summaries = new HashMap<>();
@@ -68,35 +67,14 @@ public class SummarizeNode implements NodeAction<DigestAgentState> {
             summaries.put(ids.get(i), futures.get(i).getNow(SummaryResult.defaultResult()));
         }
 
-        log.info("Summarized {} emails (parallel, pool≤{})", summaries.size(),
-                executor.toString());
+        long llmCalls = ids.stream().filter(id -> !preSummaries.containsKey(id)).count();
+        log.info("Summarized {} emails ({} from DB cache, {} via LLM)", ids.size(),
+                ids.size() - llmCalls, llmCalls);
         return Map.of(DigestAgentState.SUMMARIES, summaries);
     }
 
-    private SummaryResult summarizeOne(UUID userId, EmailMeta meta) {
-        EmailMessage email = fetchBody(userId, meta);
-        return summarize(email != null ? email : bodylessMessage(meta));
-    }
-
-    private EmailMessage fetchBody(UUID userId, EmailMeta meta) {
-        try {
-            return emailService.fetchById(userId, meta.accountId(), meta.providerId());
-        } catch (Exception e) {
-            log.warn("Could not fetch body for {}: {}", meta.providerId(), e.getMessage());
-            return null;
-        }
-    }
-
-    private EmailMessage bodylessMessage(EmailMeta meta) {
-        return new EmailMessage(meta.providerId(), meta.accountId(),
-                meta.subject(), meta.sender(), List.of(), meta.receivedAt(), "");
-    }
-
-    private SummaryResult summarize(EmailMessage email) {
-        String body = email.body() != null && email.body().length() > BODY_LIMIT
-                ? email.body().substring(0, BODY_LIMIT) + "..."
-                : email.body();
-
+    private SummaryResult summarizeOne(EmailMeta meta, String body) {
+        String truncated = body.length() > BODY_LIMIT ? body.substring(0, BODY_LIMIT) + "..." : body;
         String prompt = """
                 Summarize the following email concisely. Respond with ONLY a valid JSON object, no markdown:
                 {
@@ -110,10 +88,10 @@ public class SummarizeNode implements NodeAction<DigestAgentState> {
                 Received: %s
                 Body:
                 %s
-                """.formatted(email.subject(), email.sender(), email.receivedAt(), body);
+                """.formatted(meta.subject(), meta.sender(), meta.receivedAt(), truncated);
 
         return retry.call(
-                "summarize:" + email.providerId(),
+                "summarize:" + meta.providerId(),
                 () -> objectMapper.readValue(stripMarkdown(summarizeModel.chat(prompt)),
                         SummaryResult.class),
                 SummaryResult.defaultResult()

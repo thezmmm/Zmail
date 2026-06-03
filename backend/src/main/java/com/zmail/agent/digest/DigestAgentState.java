@@ -12,13 +12,15 @@ import java.util.UUID;
 
 public class DigestAgentState extends AgentState {
 
-    public static final String SESSION_ID     = "sessionId";
-    public static final String USER_ID        = "userId";
-    public static final String EMAIL_REFS     = "emailRefs";       // List<EmailRef>
-    public static final String EMAIL_IDS      = "emailIds";        // List<String>
-    public static final String EMAIL_META_MAP = "emailMetaMap";    // Map<String, EmailMeta>
-    public static final String SUMMARIES      = "summaries";       // Map<String, SummaryResult>
-    public static final String DIGEST         = "digest";          // DigestResult
+    public static final String SESSION_ID       = "sessionId";
+    public static final String USER_ID         = "userId";
+    public static final String EMAIL_REFS      = "emailRefs";        // List<EmailRef>
+    public static final String EMAIL_IDS       = "emailIds";         // List<String>
+    public static final String EMAIL_META_MAP  = "emailMetaMap";     // Map<String, EmailMeta>
+    public static final String EMAIL_BODIES    = "emailBodies";      // Map<String, String> providerId→body
+    public static final String PRE_SUMMARIES   = "preSummaries";     // Map<String, SummaryResult> from DB
+    public static final String SUMMARIES       = "summaries";        // Map<String, SummaryResult>
+    public static final String DIGEST          = "digest";           // DigestResult
 
     public DigestAgentState(Map<String, Object> initData) {
         super(initData);
@@ -45,6 +47,16 @@ public class DigestAgentState extends AgentState {
     @SuppressWarnings("unchecked")
     public Map<String, EmailMeta> emailMetaMap() {
         return this.<Map<String, EmailMeta>>value(EMAIL_META_MAP).orElse(Map.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, String> emailBodies() {
+        return this.<Map<String, String>>value(EMAIL_BODIES).orElse(Map.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, SummaryResult> preSummaries() {
+        return this.<Map<String, SummaryResult>>value(PRE_SUMMARIES).orElse(Map.of());
     }
 
     @SuppressWarnings("unchecked")
