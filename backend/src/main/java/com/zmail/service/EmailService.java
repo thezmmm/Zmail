@@ -11,6 +11,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -26,8 +27,15 @@ public class EmailService {
         User user = findUser(userId);
         return emailAccountRepository.findAllByUser(user).stream()
                 .filter(this::isAccessible)
-                .flatMap(account -> getAdapter(account.getProvider())
-                        .fetchUnread(account, maxResults).stream())
+                .flatMap(account -> {
+                    try {
+                        return getAdapter(account.getProvider()).fetchUnread(account, maxResults).stream();
+                    } catch (Exception e) {
+                        log.warn("fetchUnread failed for account {} ({}): {}",
+                                account.getId(), account.getAccountEmail(), e.getMessage());
+                        return Stream.of();
+                    }
+                })
                 .collect(Collectors.toList());
     }
 
@@ -35,8 +43,15 @@ public class EmailService {
         User user = findUser(userId);
         return emailAccountRepository.findAllByUser(user).stream()
                 .filter(this::isAccessible)
-                .flatMap(account -> getAdapter(account.getProvider())
-                        .fetchRecent(account, maxResults, since).stream())
+                .flatMap(account -> {
+                    try {
+                        return getAdapter(account.getProvider()).fetchRecent(account, maxResults, since).stream();
+                    } catch (Exception e) {
+                        log.warn("fetchRecent failed for account {} ({}): {}",
+                                account.getId(), account.getAccountEmail(), e.getMessage());
+                        return Stream.of();
+                    }
+                })
                 .collect(Collectors.toList());
     }
 

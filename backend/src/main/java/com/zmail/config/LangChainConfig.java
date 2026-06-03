@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 @RequiredArgsConstructor
@@ -89,6 +90,10 @@ public class LangChainConfig {
         exec.setCorePoolSize(parallelism);
         exec.setMaxPoolSize(parallelism);
         exec.setQueueCapacity(agentProperties.getMaxEmailsPerRun());
+        // CallerRunsPolicy: when queue is full the submitting thread runs the task itself,
+        // preventing RejectedExecutionException when processBatch submits more tasks than
+        // the queue can hold (e.g. initialSync with 100 emails, queue capacity 50).
+        exec.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         exec.setThreadNamePrefix("agent-llm-");
         exec.initialize();
         return exec;

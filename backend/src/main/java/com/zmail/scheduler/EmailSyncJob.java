@@ -5,6 +5,7 @@ import com.zmail.email.EmailMessage;
 import com.zmail.model.EmailAccountRepository;
 import com.zmail.service.EmailProcessingService;
 import com.zmail.service.EmailService;
+import com.zmail.service.InitialSyncService;
 import com.zmail.service.RunGuard;
 import com.zmail.service.SyncWatermarkService;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class EmailSyncJob {
     private final RunGuard runGuard;
     private final AgentProperties props;
     private final SyncWatermarkService watermark;
+    private final InitialSyncService initialSyncService;
 
     @Scheduled(cron = "${zmail.scheduler.email-sync-cron}")
     public void sync() {
@@ -41,6 +43,11 @@ public class EmailSyncJob {
     }
 
     private void syncUser(UUID userId) {
+        // Skip if initial sync is still running to avoid duplicate classify LLM calls
+        if (initialSyncService.getStatus(userId) == InitialSyncService.SyncStatus.RUNNING) {
+            log.debug("Skipping scheduled sync for user {} — initial sync in progress", userId);
+            return;
+        }
         try {
             runGuard.acquire(userId);
         } catch (IllegalStateException e) {

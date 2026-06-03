@@ -56,6 +56,7 @@ public class MsGraphAdapter implements EmailPort {
         MessageCollectionResponse response = client.me().messages().get(config -> {
             config.queryParameters.filter = "isRead eq false";
             config.queryParameters.top = maxResults;
+            config.queryParameters.orderby = new String[]{"receivedDateTime desc"};
             config.queryParameters.select = new String[]{
                     "id", "subject", "sender", "toRecipients", "receivedDateTime", "body"
             };
@@ -75,6 +76,7 @@ public class MsGraphAdapter implements EmailPort {
         MessageCollectionResponse response = client.me().messages().get(config -> {
             config.queryParameters.filter = filter;
             config.queryParameters.top = maxResults;
+            config.queryParameters.orderby = new String[]{"receivedDateTime desc"};
             config.queryParameters.select = new String[]{
                     "id", "subject", "sender", "toRecipients", "receivedDateTime", "body"
             };
