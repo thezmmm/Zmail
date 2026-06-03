@@ -7,7 +7,9 @@ import com.zmail.service.EmailProcessingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.SortDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,14 +34,18 @@ public class ResultController {
     public ResponseEntity<ApiResponse<Page<ProcessingResult>>> list(
             Authentication auth,
             @RequestParam(required = false) String category,
-            @PageableDefault(size = 20) Pageable pageable) {
+            @PageableDefault(size = 20)
+            @SortDefault.SortDefaults({
+                @SortDefault(sort = "receivedAt", direction = Sort.Direction.DESC),
+                @SortDefault(sort = "id",         direction = Sort.Direction.ASC)
+            }) Pageable pageable) {
         if (pageable.getPageNumber() < 0 || pageable.getPageSize() < 1) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Invalid pagination: page >= 0 and size >= 1 required"));
         }
         UUID userId = UUID.fromString(auth.getName());
         Page<ProcessingResult> page = (category != null && !category.isBlank())
-                ? repository.findByUserIdAndCategoryOrderByReceivedAtDescIdAsc(userId, category, pageable)
-                : repository.findByUserIdOrderByReceivedAtDescIdAsc(userId, pageable);
+                ? repository.findByUserIdAndCategory(userId, category, pageable)
+                : repository.findByUserId(userId, pageable);
         return ResponseEntity.ok(ApiResponse.ok(page));
     }
 

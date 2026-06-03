@@ -107,7 +107,9 @@ public class EmailProcessingService {
     /** On-demand analysis triggered on first view — summarize, extract action items, embed. */
     @Transactional
     public ProcessingResult analyzeOnDemand(UUID userId, UUID resultId) {
-        ProcessingResult result = resultRepository.findById(resultId)
+        // Pessimistic lock: concurrent requests for the same email wait here instead of
+        // both passing the isAnalyzed check and each firing a duplicate LLM call.
+        ProcessingResult result = resultRepository.findByIdForUpdate(resultId)
                 .orElseThrow(() -> new NoSuchElementException("Result not found: " + resultId));
         if (!result.getUserId().equals(userId)) throw new SecurityException("Access denied");
         if (result.isAnalyzed()) return result;
@@ -137,6 +139,12 @@ public class EmailProcessingService {
         ProcessingResult result = resultRepository.findById(resultId)
                 .orElseThrow(() -> new NoSuchElementException("Result not found: " + resultId));
         if (!result.getUserId().equals(userId)) throw new SecurityException("Access denied");
+
+        // Skip re-generation when a pending draft already exists to avoid wasting LLM tokens.
+        // User must reject the existing draft before generating a new one.
+        if (result.getDraftStatus() == DraftStatus.PENDING_REVIEW) {
+            return result;
+        }
 
         EmailRef ref = new EmailRef(result.getEmailProviderId(), result.getAccountId());
         String draftBody = actionAgentService.draftReply(userId, ref, "Draft a professional reply to this email.");
