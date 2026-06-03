@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { unwrap } from '@/lib/api'
 import type { ApiResponse, CreateDraftRequest, Draft, PagedResponse } from '@/types'
 
 export function usePendingDrafts() {
@@ -11,7 +11,7 @@ export function usePendingDrafts() {
         .get<ApiResponse<PagedResponse<Draft>>>('/drafts/pending', {
           params: { page: pageParam, size: 20 },
         })
-        .then(r => r.data.data!),
+        .then(unwrap),
     initialPageParam: 0,
     getNextPageParam: page => (page.last ? undefined : page.number + 1),
   })
@@ -23,7 +23,7 @@ export function useCreateDraft() {
     mutationFn: (req: CreateDraftRequest) =>
       api
         .post<ApiResponse<Draft>>('/drafts', req)
-        .then(r => r.data.data!),
+        .then(unwrap),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drafts'] })
       toast.success('草稿已保存')
@@ -38,7 +38,7 @@ export function useUpdateDraft() {
     mutationFn: ({ id, body, subject }: { id: string; body?: string; subject?: string }) =>
       api
         .patch<ApiResponse<Draft>>(`/drafts/${id}`, { body, subject })
-        .then(r => r.data.data!),
+        .then(unwrap),
     onSuccess: (data) => {
       qc.setQueryData<Draft>(['draft', data.id], data)
     },
@@ -52,7 +52,7 @@ export function useApproveDraft() {
     mutationFn: ({ id, body }: { id: string; body?: string }) =>
       api
         .post<ApiResponse<Draft>>(`/drafts/${id}/approve`, body != null ? { body } : null)
-        .then(r => r.data.data!),
+        .then(unwrap),
     onMutate: async ({ id }) => {
       await qc.cancelQueries({ queryKey: ['drafts', 'pending'] })
       const snapshot = qc.getQueryData(['drafts', 'pending'])
@@ -80,7 +80,7 @@ export function useRejectDraft() {
     mutationFn: (id: string) =>
       api
         .post<ApiResponse<Draft>>(`/drafts/${id}/reject`)
-        .then(r => r.data.data!),
+        .then(unwrap),
     onMutate: async id => {
       await qc.cancelQueries({ queryKey: ['drafts', 'pending'] })
       const snapshot = qc.getQueryData(['drafts', 'pending'])

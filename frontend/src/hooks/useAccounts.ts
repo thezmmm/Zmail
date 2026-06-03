@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { unwrap } from '@/lib/api'
 import type { AccountDto, ApiResponse, ReauthDto, SyncStatus } from '@/types'
 
 export function useAccounts() {
@@ -54,7 +54,7 @@ export function useReauthAccount() {
     mutationFn: (accountId: string) =>
       api
         .get<ApiResponse<ReauthDto>>(`/accounts/${accountId}/reauth`)
-        .then(r => r.data.data!),
+        .then(unwrap),
   })
 }
 
@@ -64,7 +64,7 @@ export function useGmailLinkUrl() {
     mutationFn: () =>
       api
         .post<ApiResponse<string>>('/auth/gmail/link-init')
-        .then(r => r.data.data!),
+        .then(unwrap),
   })
 }
 
@@ -74,6 +74,6 @@ export function useMsgraphLinkUrl() {
     mutationFn: () =>
       api
         .post<ApiResponse<string>>('/auth/msgraph/link-init')
-        .then(r => r.data.data!),
+        .then(unwrap),
   })
 }

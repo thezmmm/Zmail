@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { unwrap } from '@/lib/api'
 import type { AgentMessage, AgentSession, ApiResponse } from '@/types'
 
 export function useSessions() {
@@ -30,7 +30,7 @@ export function useCreateSession() {
     mutationFn: () =>
       api
         .post<ApiResponse<AgentSession>>('/agent/sessions')
-        .then(r => r.data.data!),
+        .then(unwrap),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sessions'] })
     },

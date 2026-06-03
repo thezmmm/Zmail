@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api from '@/lib/api'
+import api, { unwrap } from '@/lib/api'
 import type { ApiResponse, Category, PagedResponse, ProcessingResult } from '@/types'
 
 export function useResults(category?: Category) {
@@ -11,10 +11,11 @@ export function useResults(category?: Category) {
           params: {
             page: pageParam,
             size: 20,
+            sort: 'receivedAt,desc',
             ...(category && { category }),
           },
         })
-        .then(r => r.data.data!),
+        .then(unwrap),
     initialPageParam: 0,
     getNextPageParam: page => (page.last ? undefined : page.number + 1),
   })
@@ -26,7 +27,7 @@ export function useAnalyzeResult(resultId: string) {
     mutationFn: () =>
       api
         .post<ApiResponse<ProcessingResult>>(`/results/${resultId}/analyze`)
-        .then(r => r.data.data!),
+        .then(unwrap),
     onSuccess: data => {
       qc.setQueryData(['results', resultId], data)
     },
@@ -39,7 +40,7 @@ export function useGenerateDraft(resultId: string) {
     mutationFn: () =>
       api
         .post<ApiResponse<ProcessingResult>>(`/results/${resultId}/draft`)
-        .then(r => r.data.data!),
+        .then(unwrap),
     onSuccess: data => {
       qc.setQueryData(['results', resultId], data)
       qc.invalidateQueries({ queryKey: ['drafts'] })

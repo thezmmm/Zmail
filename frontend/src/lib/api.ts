@@ -2,6 +2,12 @@ import axios from 'axios'
 import { getToken, setToken, clearToken, isTokenExpiringSoon } from './auth'
 import type { ApiResponse } from '@/types'
 
+/** Unwrap the payload from an ApiResponse, throwing if the backend returned null data. */
+export function unwrap<T>(r: { data: ApiResponse<T> }): T {
+  if (r.data.data == null) throw new Error(r.data.error ?? 'Unexpected empty response')
+  return r.data.data
+}
+
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1',
 })
@@ -36,7 +42,7 @@ api.interceptors.response.use(
   err => {
     if (err.response?.status === 401) {
       clearToken()
-      window.location.href = '/login'
+      if (typeof window !== 'undefined') window.location.href = '/login'
     }
     return Promise.reject(err)
   },

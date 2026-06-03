@@ -46,11 +46,18 @@ export default function InboxPage() {
     return () => observer.disconnect()
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  const results = useMemo(() => [
-    ...new Map(
-      (data?.pages.flatMap(p => p.content) ?? []).map(r => [r.id, r]),
-    ).values(),
-  ], [data])
+  const results = useMemo(() => {
+    const deduped = [
+      ...new Map(
+        (data?.pages.flatMap(p => p.content) ?? []).map(r => [r.id, r]),
+      ).values(),
+    ]
+    return deduped.sort((a, b) => {
+      const ta = new Date(a.receivedAt ?? a.processedAt).getTime()
+      const tb = new Date(b.receivedAt ?? b.processedAt).getTime()
+      return tb - ta
+    })
+  }, [data])
 
   return (
     <div className="flex h-full flex-col">
