@@ -205,7 +205,7 @@ public class GmailAdapter implements EmailPort {
                 getHeader(headers, "From"),
                 parseAddressList(getHeader(headers, "To")),
                 OffsetDateTime.ofInstant(
-                        Instant.ofEpochMilli(message.getInternalDate()),
+                        Instant.ofEpochMilli(message.getInternalDate() != null ? message.getInternalDate() : 0L),
                         ZoneId.systemDefault()),
                 extractBody(payload)
         );

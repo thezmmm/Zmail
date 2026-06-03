@@ -55,7 +55,7 @@ public class SecurityConfig {
                 "tauri://localhost", // Tauri 2 production webview
                 "https://tauri.localhost" // Tauri 2 on some platforms
         ));
-        config.setAllowedMethods(List.of("GET", "POST", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);

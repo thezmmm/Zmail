@@ -86,8 +86,9 @@ public class OAuthTokenService {
 
         Map<String, Object> data = resp.getBody();
         account.setAccessToken((String) data.get("access_token"));
-        account.setTokenExpiry(OffsetDateTime.now().plusSeconds(
-                ((Number) data.get("expires_in")).longValue()));
+        Number expiresInNum = (Number) data.get("expires_in");
+        long expiresIn = expiresInNum != null ? expiresInNum.longValue() : 3600L;
+        account.setTokenExpiry(OffsetDateTime.now().plusSeconds(expiresIn));
         // Microsoft returns a new refresh_token on every refresh; always save it when present
         String newRefreshToken = (String) data.get("refresh_token");
         if (newRefreshToken != null && !newRefreshToken.isBlank()) {
