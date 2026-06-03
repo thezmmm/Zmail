@@ -94,7 +94,9 @@ public class DraftService {
             draft.setBody(overrideBody);
         }
         draft.setStatus(DraftStatus.SENT);
-        // saveAndFlush uses @Version to guard against concurrent approval
+        // saveAndFlush acquires a row-level lock via @Version, preventing concurrent approval
+        // from sending a duplicate email. If emailService.send() subsequently throws, the
+        // @Transactional rollback reverts this saveAndFlush — draft returns to PENDING_REVIEW.
         Draft saved = draftRepository.saveAndFlush(draft);
 
         List<String> recipients = fromJson(draft.getToAddresses());
