@@ -254,6 +254,11 @@ public class AuthController {
         String email = profile.get("mail") != null
                 ? (String) profile.get("mail")
                 : (String) profile.get("userPrincipalName");
+        if (email == null) {
+            log.error("MS Graph profile missing both mail and userPrincipalName");
+            response.sendError(HttpServletResponse.SC_BAD_GATEWAY, "email claim missing from MS Graph profile");
+            return;
+        }
         String name  = (String) profile.get("displayName");
 
         if (linkUserId.isPresent()) {
@@ -294,6 +299,7 @@ public class AuthController {
 
     private Map<String, Object> decodeIdToken(String idToken) throws IOException {
         String[] parts = idToken.split("\\.");
+        if (parts.length < 3) throw new IOException("Malformed id_token: expected 3 parts, got " + parts.length);
         byte[] payload = Base64.getUrlDecoder().decode(parts[1]);
         return new ObjectMapper().readValue(payload, new TypeReference<>() {});
     }
