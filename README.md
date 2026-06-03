@@ -32,7 +32,7 @@ AI 驱动的邮件助手桌面应用。通过对话的方式帮你分析邮件�
            │
 ┌──────────▼──────────────────────────────────────────┐
 │  PostgreSQL 16 + pgvector        Redis 7             │
-│  (向量记忆 / 会话历史)             (会话上下文缓存)   │
+│  (向量记忆 / 会话历史)         (同步水印 / 会话缓存)  │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -47,7 +47,7 @@ AI 驱动的邮件助手桌面应用。通过对话的方式帮你分析邮件�
 | LLM 交互 | LangChain4j 1.0 · OpenAI API |
 | Embedding | OpenAI `text-embedding-3-small` (1536 维) |
 | 向量记忆 | PostgreSQL 16 + pgvector |
-| 短期记忆 | Redis 7 |
+| 短期记忆 / 同步水印 | Redis 7 |
 | 邮件接入 | Gmail API · Microsoft Graph API |
 | 定时任务 | Spring Scheduler |
 
@@ -116,10 +116,11 @@ npm run tauri dev
 Zmail 采用三层 Agent 设计：
 
 ### MainAgent
-对话核心（GPT-4o，SSE 流式输出）。理解用户意图，决定调用哪个子 Agent，维护每个会话的对话历史。拥有三个工具：
+对话核心（GPT-4o，SSE 流式输出）。理解用户意图，决定调用哪个子 Agent，维护每个会话的对话历史。拥有四个工具：
 - `analyzeSelectedEmails` — 触发 DigestAgent 分析所选邮件
 - `draftEmailReply` — 通过 ActionAgent 起草回复
 - `askAboutEmail` — 通过 ActionAgent 回答关于某封邮件的问题
+- `searchEmailsByMeaning` — 通过向量相似度搜索历史邮件
 
 #### 对话记忆管理（SessionMemoryManager）
 
@@ -156,8 +157,65 @@ FetchSelected → Summarize（并发）→ GenerateDigest
 ```
 接收前端传入的邮件列表，并发摘要每封邮件，最后由 LLM 综合生成今日总览和优先行动清单。
 
+**摘要复用优化**：`FetchSelectedNode` 在发起 API 请求前先查询 DB，对已完成深度分析（`analyzed=true`）的邮件直接复用已有摘要，跳过该封邮件的 LLM 调用。只有从未分析过的邮件才触发 `SummarizeNode` 中的 LLM 请求，大幅降低重复 digest 的 token 消耗。
+
 ### ActionAgent
 针对单封邮件的辅助服务，支持起草回复和邮件内容问答。**所有操作均不自动执行**，生成结果后由用户决定。
+
+## 邮件同步机制
+
+### 触发时机
+
+| 触发源 | 时机 | 覆盖范围 |
+|---|---|---|
+| **初始同步**（`InitialSyncService`） | OAuth 授权完成后（新登录、绑定新账户、重新授权） | 最近 3 天，最多 100 封/账户 |
+| **定时同步**（`EmailSyncJob`） | 每 5 分钟自动执行 | 上次水印时间之后，最多 50 封/账户 |
+| **手动拉取**（`GET /emails`） | 前端主动调用 | 当前未读邮件，实时透传，**不入库不分类** |
+
+### 同步水印（SyncWatermarkService）
+
+水印持久化到 **Redis**，服务重启后自动恢复，不会丢失同步进度。格式：`zmail:sync:watermark:{userId}`，TTL 90 天。
+
+仅当无历史水印时（新用户）回退到 `now - 24h` 兜底。
+
+### 并发保护
+
+- 同一用户的初始同步正在进行中时，定时任务会自动跳过该用户，避免 LLM classify 重复调用
+- `RunGuard` 保证同一用户定时同步不并发（60s 最小间隔）
+- `isAlreadyProcessed()` + DB unique 约束（`user_id, email_provider_id`）双重防止重复入库
+- 多账户中单个账户失败时，其余账户继续正常同步
+
+### AI 处理流水线（三阶段按需触发）
+
+```
+阶段 1 — 后台同步（自动，每 5 分钟）
+─────────────────────────────────────────────────────
+fetchRecent(since=watermark)（Gmail / Graph，跳过 needsReauth 账号）
+    │
+    ├─ 已存在 processing_results → 跳过
+    │
+    └─ 新邮件 → EmailProcessingAgent（gpt-4o-mini）
+                  输出：category / priority / sentiment /
+                        requiresResponse / recommendedAction
+                  analyzed = false
+                  → 写 processing_results
+
+阶段 2 — 按需深度分析（用户首次打开邮件详情页时自动触发）
+─────────────────────────────────────────────────────
+POST /results/{id}/analyze
+    └─ SELECT FOR UPDATE（防并发重复调用）
+       → 拉取邮件原文 → EmailSummarizeAgent（gpt-4o）
+           输出：summary / actionItems
+           analyzed = true → 向量 Embedding 写入 pgvector
+
+阶段 3 — 手动生成草稿（用户主动点击"生成草稿"）
+─────────────────────────────────────────────────────
+POST /results/{id}/draft
+    └─ 若 draftStatus == PENDING_REVIEW → 直接返回，不重复调用 LLM
+       否则 → ActionAgentService.draftReply()（gpt-4o）
+              → draftStatus = PENDING_REVIEW
+              用户可在详情页审批发送或拒绝后重新生成
+```
 
 ## API 参考
 
@@ -177,8 +235,10 @@ FetchSelected → Summarize（并发）→ GenerateDigest
 |---|---|---|
 | `GET` | `/auth/gmail/login` | 发起 Gmail OAuth2 授权 |
 | `GET` | `/auth/gmail/callback` | Gmail OAuth2 回调，返回 JWT |
+| `POST` | `/auth/gmail/link-init` | 已登录用户绑定新 Gmail 账户，返回授权 URL |
 | `GET` | `/auth/msgraph/login` | 发起 Microsoft OAuth2 授权 |
 | `GET` | `/auth/msgraph/callback` | Microsoft OAuth2 回调，返回 JWT |
+| `POST` | `/auth/msgraph/link-init` | 已登录用户绑定新 Outlook 账户，返回授权 URL |
 | `POST` | `/auth/token/refresh` | 用当前有效 JWT 换取新 JWT（无需重走 OAuth） |
 
 > **JWT 续期建议**：前端解析 JWT payload 的 `exp` 字段，在过期前 5 分钟调用 `/auth/token/refresh` 静默续期，避免用户感知到登录中断。JWT 过期后该接口不可用，需重走 OAuth。
@@ -192,8 +252,8 @@ AI 同步处理完的邮件存在 `processing_results` 表，是前端主收件�
 | `GET` | `/results?page=0&size=20` | 分页获取当前用户所有处理结果，按邮件接收时间倒序 |
 | `GET` | `/results?page=0&size=20&category=WORK` | 按分类过滤（`WORK` / `PERSONAL` / `FINANCE` / `PROMOTIONS` / `OTHER`） |
 | `GET` | `/results/{id}` | 获取单条处理结果详情 |
-| `POST` | `/results/{id}/analyze` | 触发按需深度分析（生成摘要 + 待办事项 + 向量 Embedding） |
-| `POST` | `/results/{id}/draft` | 手动生成 AI 回复草稿 |
+| `POST` | `/results/{id}/analyze` | 触发按需深度分析（幂等，`analyzed=true` 后直接返回） |
+| `POST` | `/results/{id}/draft` | 手动生成 AI 回复草稿（幂等，存在待审批草稿时直接返回） |
 
 处理结果包含字段：`category`、`priority`、`sentiment`、`receivedAt`、`summary`、`actionItems`、`analyzed`、`actionTaken`、`draftStatus`、`replyDraft` 等。
 
@@ -201,9 +261,11 @@ AI 同步处理完的邮件存在 `processing_results` 表，是前端主收件�
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/drafts/pending?page=0&size=20` | 待审批的 AI 回复草稿列表 |
-| `POST` | `/drafts/{id}/approve` | 审批通过并发送邮件（幂等，重复请求返回 409） |
-| `POST` | `/drafts/{id}/reject` | 拒绝草稿 |
+| `GET` | `/drafts/pending?page=0&size=20` | 待审批草稿列表（AI 生成 + 用户手写） |
+| `POST` | `/drafts` | 手动新建草稿（`accountId`、`to`、`subject`、`body`） |
+| `PATCH` | `/drafts/{id}` | 修改草稿内容（`body` / `subject`，仅 PENDING_REVIEW 状态可修改） |
+| `POST` | `/drafts/{id}/approve` | 审批通过并发送邮件（重复请求返回 409） |
+| `POST` | `/drafts/{id}/reject` | 拒绝草稿（拒绝后可重新生成） |
 
 ### Agent 对话
 
@@ -211,8 +273,8 @@ AI 同步处理完的邮件存在 `processing_results` 表，是前端主收件�
 |---|---|---|
 | `POST` | `/agent/sessions` | 创建新会话 |
 | `GET` | `/agent/sessions` | 列出当前用户的所有会话 |
-| `GET` | `/agent/sessions/{id}` | 获取会话详情及完整消息历史 |
-| `DELETE` | `/agent/sessions/{id}` | 删除会话 |
+| `GET` | `/agent/sessions/{id}/messages` | 获取会话完整消息历史 |
+| `DELETE` | `/agent/sessions/{id}` | 删除会话（同步清理内存中的 LangChain4j memory） |
 | `POST` | `/agent/chat` | 发送消息，返回 SSE 流 |
 
 #### 发送消息（SSE）
@@ -277,12 +339,12 @@ Authorization: Bearer <token>
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/emails?maxResults=20` | 获取所有账号未读邮件原始列表 |
+| `GET` | `/emails?maxResults=20` | 获取所有账号未读邮件原始列表（实时，不入库） |
 | `GET` | `/emails/{id}?accountId=` | 获取单封邮件原文 |
 | `POST` | `/emails/{id}/archive?accountId=` | 归档邮件 |
 | `POST` | `/emails/{id}/flag?accountId=` | 标记邮件为待办 |
 | `POST` | `/emails/{id}/read?accountId=` | 标为已读 |
-| `POST` | `/emails/send` | 发送邮件（`to`、`subject`、`body` 均必填） |
+| `POST` | `/emails/send` | 发送邮件（`accountId`、`to`、`subject`、`body` 均必填） |
 
 ## 项目结构
 
@@ -292,8 +354,8 @@ zmail/
 │   ├── src/
 │   │   ├── app/          # Next.js App Router 页面
 │   │   ├── components/   # React 组件
-│   │   ├── hooks/        # 自定义 Hooks
-│   │   ├── lib/          # API 客户端、工具函数
+│   │   ├── hooks/        # 自定义 Hooks（useResults、useDrafts 等）
+│   │   ├── lib/          # API 客户端（api.ts）、工具函数
 │   │   └── types/        # 共享 TypeScript 类型
 │   └── src-tauri/        # Tauri Rust 层
 ├── backend/
@@ -308,11 +370,11 @@ zmail/
 │       │   │   └── node/ # FetchSelectedNode、SummarizeNode、GenerateDigestNode
 │       │   └── model/    # 共享数据类型（EmailRef、DigestResult 等）
 │       ├── config/       # Spring 配置（Security、LangChain4j、Agent 属性）
-│       ├── controller/   # REST 控制器（Auth / Chat / Session / Email）
+│       ├── controller/   # REST 控制器
 │       ├── email/        # EmailPort、GmailAdapter、MsGraphAdapter
-│       ├── model/        # JPA 实体（User、AgentSession、AgentMessage 等）
+│       ├── model/        # JPA 实体（User、AgentSession、ProcessingResult 等）
 │       ├── scheduler/    # 定时任务（EmailSyncJob）
-│       └── service/      # 业务逻辑（含 EmailProcessingService）
+│       └── service/      # 业务逻辑（EmailProcessingService、DraftService 等）
 ├── docker-compose.yml
 └── CLAUDE.md
 ```
@@ -334,42 +396,6 @@ zmail/
 | `EmailSyncJob` | 每 5 分钟 | ✅ 已实现 | 按水印时间拉取新邮件 → 仅分类（category / priority / sentiment）→ 写 `processing_results`；摘要和草稿按需触发 |
 | `DailySummaryJob` | 每天 08:00 | 🚧 待实现 | 聚合 `processing_results` 生成今日任务清单 |
 | `MemoryConsolidationJob` | 每天 00:00 | 🚧 待实现 | 压缩历史邮件记忆到 pgvector |
-
-### EmailSyncJob 处理流程
-
-AI 处理分三个阶段，按需触发，降低 token 消耗：
-
-```
-阶段 1 — 后台同步（自动，每 5 分钟）
-─────────────────────────────────────────────────────
-fetchRecent(since=watermark)（Gmail / Graph，跳过 needsReauth 账号）
-    │
-    ├─ 已存在 processing_results → 跳过
-    │
-    └─ 新邮件 → EmailProcessingAgent（gpt-4o-mini）
-                  输出：category / priority / sentiment /
-                        requiresResponse / recommendedAction
-                  analyzed = false
-                  → 写 processing_results
-
-阶段 2 — 按需深度分析（用户首次打开邮件详情页时自动触发）
-─────────────────────────────────────────────────────
-POST /results/{id}/analyze
-    └─ 拉取邮件原文 → EmailSummarizeAgent（gpt-4o）
-         输出：summary / actionItems
-         analyzed = true → 向量 Embedding 写入 pgvector
-
-阶段 3 — 手动生成草稿（用户主动点击"生成草稿"）
-─────────────────────────────────────────────────────
-POST /results/{id}/draft
-    └─ ActionAgentService.draftReply()
-         → draftStatus = PENDING_REVIEW
-         用户可在详情页审批发送或拒绝重生成
-```
-
-**同步水印（SyncWatermarkService）**：每次同步记录本次开始时间，下次从该时间点拉取，避免拉取历史大量旧邮件。服务重启后退回到 `now - 24h` 兜底，确保不漏邮件。
-
-**与 InitialSyncService 的关系**：用户首次 OAuth 授权后，`InitialSyncService` 会异步拉取最近 3 天的邮件并批量处理（走 `agentExecutor` 线程池）。
 
 ## 常用命令
 
