@@ -70,7 +70,11 @@ export function useApproveDraft() {
       if (ctx?.snapshot) qc.setQueryData(['drafts', 'pending'], ctx.snapshot)
       toast.error('发送失败，请重试')
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['drafts'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['drafts'] })
+      // ProcessingResult.draftStatus is updated on the server; keep the results cache in sync
+      qc.invalidateQueries({ queryKey: ['results'] })
+    },
   })
 }
 
@@ -98,6 +102,9 @@ export function useRejectDraft() {
       if (ctx?.snapshot) qc.setQueryData(['drafts', 'pending'], ctx.snapshot)
       toast.error('操作失败，请重试')
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['drafts'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['drafts'] })
+      qc.invalidateQueries({ queryKey: ['results'] })
+    },
   })
 }

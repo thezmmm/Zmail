@@ -31,6 +31,11 @@ export function useAnalyzeResult(resultId: string) {
     onSuccess: data => {
       qc.setQueryData(['results', resultId], data)
     },
+    onSettled: () => {
+      // Refresh paginated list regardless of outcome — server may have processed
+      // the request even if the response timed out on the client
+      qc.invalidateQueries({ queryKey: ['results'] })
+    },
   })
 }
 

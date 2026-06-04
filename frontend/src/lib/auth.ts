@@ -22,7 +22,10 @@ export function getTokenExpiry(): number | null {
   const token = getToken()
   if (!token) return null
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
+    // JWT uses Base64URL (no padding, - and _ instead of + and /); normalise before atob().
+    const raw = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const base64 = raw + '=='.slice(0, (4 - (raw.length % 4)) % 4)
+    const payload = JSON.parse(atob(base64))
     return typeof payload.exp === 'number' ? payload.exp * 1000 : null
   } catch {
     return null
