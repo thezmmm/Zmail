@@ -4,6 +4,7 @@ import com.google.api.client.googleapis.GoogleUtils;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.javanet.NetHttpTransport;
+import jakarta.annotation.PostConstruct;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.*;
@@ -38,8 +39,24 @@ public class GmailAdapter implements EmailPort {
     @Value("${dev.proxy.port:7890}")
     private int proxyPort;
 
+    private HttpTransport transport;
+
     public GmailAdapter(OAuthTokenService tokenService) {
         this.tokenService = tokenService;
+    }
+
+    @PostConstruct
+    void init() {
+        try {
+            this.transport = (proxyHost == null || proxyHost.isBlank())
+                    ? GoogleNetHttpTransport.newTrustedTransport()
+                    : new NetHttpTransport.Builder()
+                            .trustCertificates(GoogleUtils.getCertificateTrustStore())
+                            .setProxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort)))
+                            .build();
+        } catch (GeneralSecurityException | IOException e) {
+            throw new RuntimeException("Failed to initialize Gmail HTTP transport", e);
+        }
     }
 
     @Override
@@ -157,7 +174,7 @@ public class GmailAdapter implements EmailPort {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private Gmail buildService(EmailAccount account) throws GeneralSecurityException, IOException {
+    private Gmail buildService(EmailAccount account) {
         String accessToken = tokenService.getValidAccessToken(account);
         return new Gmail.Builder(
                 buildTransport(),
@@ -166,14 +183,8 @@ public class GmailAdapter implements EmailPort {
         ).setApplicationName("Zmail").build();
     }
 
-    private HttpTransport buildTransport() throws GeneralSecurityException, IOException {
-        if (proxyHost == null || proxyHost.isBlank()) {
-            return GoogleNetHttpTransport.newTrustedTransport();
-        }
-        return new NetHttpTransport.Builder()
-                .trustCertificates(GoogleUtils.getCertificateTrustStore())
-                .setProxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort)))
-                .build();
+    private HttpTransport buildTransport() {
+        return transport;
     }
 
     private void modifyLabels(EmailAccount account, String messageId,
@@ -231,13 +242,26 @@ public class GmailAdapter implements EmailPort {
         if (payload.getBody() != null && payload.getBody().getData() != null) {
             return decode(payload.getBody().getData());
         }
-        if (payload.getParts() != null) {
-            for (MessagePart part : payload.getParts()) {
-                String mime = part.getMimeType();
-                if (("text/plain".equals(mime) || "text/html".equals(mime))
-                        && part.getBody() != null && part.getBody().getData() != null) {
-                    return decode(part.getBody().getData());
-                }
+        if (payload.getParts() == null) return "";
+
+        // First pass: prefer text/plain — no HTML tags, better for LLM token efficiency
+        for (MessagePart part : payload.getParts()) {
+            if ("text/plain".equals(part.getMimeType())
+                    && part.getBody() != null && part.getBody().getData() != null) {
+                return decode(part.getBody().getData());
+            }
+        }
+        // Second pass: accept text/html, or recurse into nested multipart/*
+        // (many real emails are multipart/mixed → multipart/alternative → text/plain)
+        for (MessagePart part : payload.getParts()) {
+            String mime = part.getMimeType();
+            if ("text/html".equals(mime)
+                    && part.getBody() != null && part.getBody().getData() != null) {
+                return decode(part.getBody().getData());
+            }
+            if (mime != null && mime.startsWith("multipart/")) {
+                String nested = extractBody(part);
+                if (!nested.isEmpty()) return nested;
             }
         }
         return "";

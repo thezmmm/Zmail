@@ -1,5 +1,6 @@
 package com.zmail.email;
 
+import jakarta.annotation.PostConstruct;
 import com.microsoft.graph.models.BodyType;
 import com.microsoft.graph.models.EmailAddress;
 import com.microsoft.graph.models.FollowupFlag;
@@ -46,8 +47,19 @@ public class MsGraphAdapter implements EmailPort {
     @Value("${dev.proxy.port:7890}")
     private int proxyPort;
 
+    private OkHttpClient okHttpClient;
+
     public MsGraphAdapter(OAuthTokenService tokenService) {
         this.tokenService = tokenService;
+    }
+
+    @PostConstruct
+    void init() {
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
+        if (proxyHost != null && !proxyHost.isBlank()) {
+            builder.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort)));
+        }
+        this.okHttpClient = builder.build();
     }
 
     @Override
@@ -181,11 +193,7 @@ public class MsGraphAdapter implements EmailPort {
     }
 
     private OkHttpClient buildOkHttpClient() {
-        OkHttpClient.Builder builder = new OkHttpClient.Builder();
-        if (proxyHost != null && !proxyHost.isBlank()) {
-            builder.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort)));
-        }
-        return builder.build();
+        return okHttpClient;
     }
 
     private EmailMessage toEmailMessage(Message msg, UUID accountId) {
