@@ -30,7 +30,7 @@ public class LlmRetryHelper {
                     log.error("[{}] failed after {} attempts: {}", opName, MAX_ATTEMPTS, e.getMessage());
                     return fallback;
                 }
-                long delay = BASE_DELAY_MS * (1L << (attempt - 1)); // 1 s, 2 s, 4 s
+                long delay = BASE_DELAY_MS * (1L << (attempt - 1)); // 1 s, 2 s
                 log.warn("[{}] attempt {}/{} failed ({}), retrying in {} ms",
                         opName, attempt, MAX_ATTEMPTS, e.getMessage(), delay);
                 sleep(delay);

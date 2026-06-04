@@ -137,8 +137,7 @@ public class SessionMemoryManager {
         AgentSession session = sessionRepo.findById(sessionId).orElseThrow();
         String newSummary = compress(session.getSummary(), toCompress);
 
-        sessionService.updateSummary(sessionId, newSummary);
-        sessionService.updateCompressedUntil(sessionId, safeEnd);
+        sessionService.updateSummaryAndCompressedUntil(sessionId, newSummary, safeEnd);
         lastCompressedTotal.put(sessionId.toString(), safeEnd);
 
         log.info("Compressed messages[{}..{}] for session {} (total={})",

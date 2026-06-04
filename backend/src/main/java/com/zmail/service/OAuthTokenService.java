@@ -18,6 +18,8 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +33,10 @@ public class OAuthTokenService {
     private final EmailAccountRepository emailAccountRepository;
     private final RestTemplate restTemplate;
 
+    /** Per-account mutex: prevents two concurrent threads from both issuing a refresh call
+     *  with the same refresh token, which would invalidate it on Microsoft OAuth. */
+    private final ConcurrentHashMap<UUID, Object> refreshLocks = new ConcurrentHashMap<>();
+
     public String getValidAccessToken(EmailAccount account) {
         if (account.isNeedsReauth()) {
             // Use the stored access token if it hasn't expired yet
@@ -41,7 +47,17 @@ public class OAuthTokenService {
                     "Account " + account.getId() + " requires re-authorization");
         }
         if (isExpiringSoon(account)) {
-            refreshAccessToken(account);
+            Object lock = refreshLocks.computeIfAbsent(account.getId(), id -> new Object());
+            synchronized (lock) {
+                // Re-read from DB after acquiring the lock: a concurrent thread may have already
+                // completed a refresh while this thread was waiting. If so, skip the refresh.
+                EmailAccount current = emailAccountRepository.findById(account.getId())
+                        .orElseThrow(() -> new IllegalStateException("Account not found: " + account.getId()));
+                if (isExpiringSoon(current)) {
+                    refreshAccessToken(current);
+                }
+                return current.getAccessToken();
+            }
         }
         return account.getAccessToken();
     }

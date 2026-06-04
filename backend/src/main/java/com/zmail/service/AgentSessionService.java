@@ -54,17 +54,12 @@ public class AgentSessionService {
     }
 
     @Transactional
-    public void updateSummary(UUID sessionId, String summary) {
+    public void updateSummaryAndCompressedUntil(UUID sessionId, String summary, int compressedUntil) {
         AgentSession s = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
         s.setSummary(summary);
-    }
-
-    @Transactional
-    public void updateCompressedUntil(UUID sessionId, int count) {
-        AgentSession s = sessionRepo.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
-        s.setCompressedUntil(count);
+        s.setCompressedUntil(compressedUntil);
+        sessionRepo.save(s);
     }
 
     public int countMessages(UUID sessionId) {
