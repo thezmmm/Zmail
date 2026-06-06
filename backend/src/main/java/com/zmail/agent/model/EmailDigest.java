@@ -1,5 +1,6 @@
 package com.zmail.agent.model;
 
+import java.io.Serializable;
 import java.util.List;
 
 public record EmailDigest(
@@ -8,4 +9,4 @@ public record EmailDigest(
         String sender,
         String summary,
         List<String> actionItems
-) {}
+) implements Serializable {}

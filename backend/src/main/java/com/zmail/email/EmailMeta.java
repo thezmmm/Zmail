@@ -1,5 +1,6 @@
 package com.zmail.email;
 
+import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -10,4 +11,4 @@ public record EmailMeta(
         String subject,
         String sender,
         OffsetDateTime receivedAt
-) {}
+) implements Serializable {}
