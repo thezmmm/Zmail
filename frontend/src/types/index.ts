@@ -123,3 +123,21 @@ export interface ChatRequest {
   message: string
   emails?: EmailRef[]
 }
+
+export interface EmailDigest {
+  emailId: string
+  subject: string
+  sender: string
+  summary: string
+  actionItems: string[]
+}
+
+export interface DailyDigest {
+  id: string
+  userId: string
+  digestDate: string
+  overview: string
+  emails: EmailDigest[]
+  priorities: string[]
+  createdAt: string
+}

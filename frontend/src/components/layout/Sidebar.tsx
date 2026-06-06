@@ -8,6 +8,7 @@ import {
   FileText,
   MessageSquare,
   Mail,
+  Newspaper,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -21,6 +22,7 @@ import type { ApiResponse, Draft, PagedResponse } from '@/types'
 
 const navItems = [
   { href: '/',         label: '收件箱',     icon: Inbox },
+  { href: '/digest',   label: '今日日报',   icon: Newspaper },
   { href: '/drafts',   label: '草稿审批',   icon: FileText },
   { href: '/chat',     label: 'Agent 对话', icon: MessageSquare },
   { href: '/accounts', label: '账户管理',   icon: Mail },
