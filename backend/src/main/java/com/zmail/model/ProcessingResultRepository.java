@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 import jakarta.persistence.LockModeType;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,4 +37,21 @@ public interface ProcessingResultRepository extends JpaRepository<ProcessingResu
             UUID userId, DraftStatus draftStatus, Pageable pageable);
 
     long countByUserIdAndActionTaken(UUID userId, ActionType actionTaken);
+
+    List<ProcessingResult> findByUserIdAndProcessedAtAfter(UUID userId, OffsetDateTime since);
+
+    Page<ProcessingResult> findByUserIdAndProcessedAtAfter(UUID userId, OffsetDateTime since, Pageable pageable);
+
+    @Query(value = """
+            SELECT * FROM processing_results pr
+            WHERE pr.user_id = :userId
+              AND pr.summary IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM email_embeddings ee
+                  WHERE ee.user_id = pr.user_id
+                    AND ee.source_id = pr.email_provider_id
+              )
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<ProcessingResult> findUnembedded(@Param("userId") UUID userId, @Param("limit") int limit);
 }
