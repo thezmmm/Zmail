@@ -120,3 +120,18 @@ CREATE TABLE IF NOT EXISTS email_embeddings (
 
 CREATE INDEX IF NOT EXISTS idx_email_embeddings_vector
     ON email_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- ── Daily digest cache ────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS daily_digests (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    digest_date  DATE NOT NULL,
+    overview     TEXT,
+    emails       TEXT,
+    priorities   TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, digest_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_digests_user_date ON daily_digests(user_id, digest_date DESC);
