@@ -18,6 +18,7 @@ import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
@@ -82,18 +83,25 @@ public class ChatController {
                     mainAgentTools.clearContext(req.sessionId());
                     sessionMemoryManager.maybeCompress(session.getId(), userId);
 
-                    // Auto-generate title on first exchange (before sending "done" so the
-                    // frontend's invalidateQueries sees the updated title immediately)
-                    String t = session.getTitle();
-                    if ("新对话".equals(t) || "New conversation".equals(t)) {
-                        sessionService.generateAndSaveTitle(session.getId(), req.message());
-                    }
+                    // Send "done" immediately so the frontend's streaming indicator stops
+                    try { emitter.send(SseEmitter.event().name("done").data("[DONE]")); }
+                    catch (IOException ignored) {}
 
-                    if (emitterDone.compareAndSet(false, true)) {
-                        try {
-                            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
-                        } catch (IOException ignored) {}
-                        emitter.complete();
+                    String currentTitle = session.getTitle();
+                    boolean needsTitle = "新对话".equals(currentTitle) || "New conversation".equals(currentTitle);
+
+                    if (needsTitle) {
+                        // Generate title async — sends a "session_title" event when ready, then closes emitter
+                        CompletableFuture.runAsync(() -> {
+                            String title = sessionService.generateAndSaveTitle(session.getId(), req.message());
+                            if (emitterDone.compareAndSet(false, true)) {
+                                try { emitter.send(SseEmitter.event().name("session_title").data(title)); }
+                                catch (IOException ignored) {}
+                                emitter.complete();
+                            }
+                        });
+                    } else {
+                        if (emitterDone.compareAndSet(false, true)) emitter.complete();
                     }
                     log.debug("Chat complete for session {}", req.sessionId());
                 })
