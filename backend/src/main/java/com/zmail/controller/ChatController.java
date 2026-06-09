@@ -99,8 +99,13 @@ public class ChatController {
                 })
                 .onError(err -> {
                     mainAgentTools.clearContext(req.sessionId());
-                    log.error("Chat error for session {}: {}", req.sessionId(), err.getMessage());
-                    if (emitterDone.compareAndSet(false, true)) emitter.completeWithError(err);
+                    if (emitterDone.compareAndSet(false, true)) {
+                        log.error("Chat error for session {}: {}", req.sessionId(), err.getMessage());
+                        emitter.completeWithError(err);
+                    } else {
+                        // emitter already closed (client disconnected) — cascade error, not a real failure
+                        log.debug("Chat stream ended after client disconnect for session {}", req.sessionId());
+                    }
                 })
                 .start();
 
