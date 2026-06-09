@@ -8,7 +8,7 @@ import com.zmail.agent.model.EmailDigest;
 import com.zmail.agent.model.EmailRef;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.service.tool.ToolMemoryId;
+import dev.langchain4j.agent.tool.ToolMemoryId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
