@@ -7,7 +7,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.*;
 
 @Service
@@ -46,28 +49,45 @@ public class EmailEmbeddingService {
      * Finds the top-K emails most semantically similar to the query.
      * Returns an empty list if the vector search fails.
      */
+    @Transactional(readOnly = true)
     public List<SimilarEmailResult> search(UUID userId, String query, int topK) {
         try {
             float[] queryVector = embeddingModel.embed(query).content().vector();
+            String vec = toVectorString(queryVector);
 
-            return jdbcTemplate.query(
-                "SELECT pr.id, pr.subject, pr.sender, pr.summary, pr.category, pr.priority " +
-                "FROM email_embeddings ee " +
-                "JOIN processing_results pr " +
-                "  ON pr.email_provider_id = ee.source_id AND pr.user_id = ee.user_id " +
-                "WHERE ee.user_id = ? " +
-                "ORDER BY ee.embedding <=> ?::vector " +
-                "LIMIT ?",
-                (rs, rowNum) -> new SimilarEmailResult(
-                    rs.getObject("id", UUID.class),
-                    rs.getString("subject"),
-                    rs.getString("sender"),
-                    rs.getString("summary"),
-                    rs.getString("category"),
-                    rs.getString("priority")
-                ),
-                userId, toVectorString(queryVector), topK
-            );
+            return jdbcTemplate.execute((java.sql.Connection conn) -> {
+                // SET LOCAL only lives for this transaction; raises probes from default 1
+                // to 10 so IVFFlat scans 10% of clusters instead of 1%, giving acceptable recall.
+                try (var stmt = conn.createStatement()) {
+                    stmt.execute("SET LOCAL ivfflat.probes = 10");
+                }
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT pr.id, pr.subject, pr.sender, pr.summary, pr.category, pr.priority " +
+                        "FROM email_embeddings ee " +
+                        "JOIN processing_results pr " +
+                        "  ON pr.email_provider_id = ee.source_id AND pr.user_id = ee.user_id " +
+                        "WHERE ee.user_id = ? " +
+                        "ORDER BY ee.embedding <=> ?::vector " +
+                        "LIMIT ?")) {
+                    ps.setObject(1, userId);
+                    ps.setString(2, vec);
+                    ps.setInt(3, topK);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        List<SimilarEmailResult> results = new ArrayList<>();
+                        while (rs.next()) {
+                            results.add(new SimilarEmailResult(
+                                rs.getObject("id", UUID.class),
+                                rs.getString("subject"),
+                                rs.getString("sender"),
+                                rs.getString("summary"),
+                                rs.getString("category"),
+                                rs.getString("priority")
+                            ));
+                        }
+                        return results;
+                    }
+                }
+            });
         } catch (Exception e) {
             log.error("Vector search failed for user {}: {}", userId, e.getMessage());
             return List.of();
