@@ -45,8 +45,6 @@ public class MainAgentService {
                 .tools(tools)
                 .systemMessageProvider(memoryId ->
                         "You are Zmail, a helpful email assistant. " +
-                        "The current session ID is: " + memoryId + ". " +
-                        "When calling tools that require a sessionId, always pass this value. " +
                         "Be concise, actionable, and friendly. " +
                         "When the user has selected emails, call analyzeSelectedEmails to get a digest first.")
                 .build();

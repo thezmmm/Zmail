@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getToken } from '@/lib/auth'
-import type { AgentMessage, ChatRequest } from '@/types'
+import type { AgentMessage, ChatRequest, EmailRef } from '@/types'
 
 /**
  * Parse one SSE message block (content between two \n\n separators).
@@ -22,12 +22,8 @@ function parseSseBlock(raw: string): { eventType: string; eventData: string } {
     const field = line.slice(0, colonIdx)
     const value = line.slice(colonIdx + 1)
     if (field === 'event') {
-      // Event names never contain meaningful whitespace; trim for safety
       eventType = value.trim()
     } else if (field === 'data') {
-      // Spring's SseEmitter writes "data:<content>" with NO separator space,
-      // so any leading space here is part of the actual token text (e.g. " world").
-      // Do NOT strip it — stripping would collapse word boundaries in English output.
       dataParts.push(value)
     }
   }
@@ -36,12 +32,13 @@ function parseSseBlock(raw: string): { eventType: string; eventData: string } {
 
 export function useChat(sessionId: string | null) {
   const qc = useQueryClient()
-  const [isStreaming, setIsStreaming]         = useState(false)
+  const [isStreaming, setIsStreaming]           = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [toolStatus, setToolStatus]             = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   const sendMessage = useCallback(
-    async (message: string) => {
+    async (message: string, emails?: EmailRef[]) => {
       if (!sessionId || isStreaming || !message.trim()) return
 
       // Optimistically add user message to cache
@@ -58,12 +55,12 @@ export function useChat(sessionId: string | null) {
 
       setIsStreaming(true)
       setStreamingContent('')
+      setToolStatus(null)
       abortRef.current = new AbortController()
 
       let accumulated = ''
       let committed   = false
 
-      /** Commit the accumulated assistant reply exactly once. */
       function commitAssistant() {
         if (committed || !accumulated) return
         committed = true
@@ -89,7 +86,11 @@ export function useChat(sessionId: string | null) {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${getToken()}`,
           },
-          body: JSON.stringify({ sessionId, message } satisfies ChatRequest),
+          body: JSON.stringify({
+            sessionId,
+            message,
+            ...(emails && emails.length > 0 && { emails }),
+          } satisfies ChatRequest),
           signal: abortRef.current.signal,
         })
 
@@ -105,7 +106,6 @@ export function useChat(sessionId: string | null) {
 
           buffer += decoder.decode(value, { stream: true })
           const blocks = buffer.split('\n\n')
-          // Keep the last (potentially incomplete) block in the buffer
           buffer = blocks.pop() ?? ''
 
           for (const block of blocks) {
@@ -113,31 +113,32 @@ export function useChat(sessionId: string | null) {
             if (eventType === 'token' && eventData) {
               accumulated += eventData
               setStreamingContent(accumulated)
+              setToolStatus(null)
+            } else if (eventType === 'tool_start') {
+              setToolStatus(eventData)
             } else if (eventType === 'done') {
               commitAssistant()
             }
           }
         }
 
-        // Flush remaining buffer — handles missing trailing \n\n on last event
         if (buffer.trim()) {
           const { eventType, eventData } = parseSseBlock(buffer)
           if (eventType === 'token' && eventData) accumulated += eventData
           if (eventType === 'done') commitAssistant()
         }
 
-        // Fallback commit: stream closed without a done event (e.g. backend error)
         commitAssistant()
 
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           console.error('Chat stream error', err)
         }
-        // Preserve partial response on unexpected disconnect
         commitAssistant()
       } finally {
         setIsStreaming(false)
         setStreamingContent('')
+        setToolStatus(null)
       }
     },
     [sessionId, isStreaming, qc],
@@ -147,5 +148,5 @@ export function useChat(sessionId: string | null) {
     abortRef.current?.abort()
   }, [])
 
-  return { sendMessage, isStreaming, streamingContent, abort }
+  return { sendMessage, isStreaming, streamingContent, toolStatus, abort }
 }

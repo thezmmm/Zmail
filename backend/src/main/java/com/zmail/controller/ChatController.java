@@ -58,7 +58,11 @@ public class ChatController {
                 req.emails().stream()
                         .map(e -> new EmailRef(e.providerId(), UUID.fromString(e.accountId())))
                         .toList();
-        mainAgentTools.registerContext(req.sessionId(), userId, refs);
+        mainAgentTools.registerContext(req.sessionId(), userId, refs, status -> {
+            try {
+                emitter.send(SseEmitter.event().name("tool_start").data(status));
+            } catch (java.io.IOException ignored) {}
+        });
 
         StringBuilder assistantResponse = new StringBuilder();
         AtomicBoolean emitterDone = new AtomicBoolean(false);

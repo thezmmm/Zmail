@@ -1,12 +1,16 @@
 'use client'
 
 import { useState, KeyboardEvent, FormEvent } from 'react'
-import { Send, Square } from 'lucide-react'
+import { Send, Square, Paperclip, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import type { ProcessingResult } from '@/types'
 
 interface ChatInputProps {
   onSend: (message: string) => void
   onAbort: () => void
+  onTogglePicker: () => void
+  selectedEmails: ProcessingResult[]
+  onRemoveEmail: (id: string) => void
   isStreaming: boolean
   disabled?: boolean
 }
@@ -14,6 +18,9 @@ interface ChatInputProps {
 export default function ChatInput({
   onSend,
   onAbort,
+  onTogglePicker,
+  selectedEmails,
+  onRemoveEmail,
   isStreaming,
   disabled,
 }: ChatInputProps) {
@@ -33,7 +40,6 @@ export default function ChatInput({
     }
   }
 
-  // Fallback for browsers that don't support field-sizing:content (non-Chrome)
   function handleInput(e: FormEvent<HTMLTextAreaElement>) {
     const el = e.currentTarget
     el.style.height = 'auto'
@@ -42,7 +48,43 @@ export default function ChatInput({
 
   return (
     <div className="border-t border-gray-800 px-6 py-4">
+      {/* Selected email chips */}
+      {selectedEmails.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {selectedEmails.map(email => (
+            <span
+              key={email.id}
+              className="flex max-w-[200px] items-center gap-1 rounded-full border border-blue-700/50 bg-blue-900/30 px-2 py-0.5 text-[10px] text-blue-300"
+            >
+              <span className="truncate">{email.subject ?? '（无主题）'}</span>
+              <button
+                onClick={() => onRemoveEmail(email.id)}
+                className="shrink-0 rounded-full p-0.5 text-blue-400 hover:bg-blue-800/50 hover:text-blue-200"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-end gap-2 rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 focus-within:border-gray-600">
+        {/* Attach emails button */}
+        <button
+          onClick={onTogglePicker}
+          disabled={isStreaming}
+          title="选择邮件"
+          className={cn(
+            'shrink-0 rounded-lg p-1.5 transition-colors',
+            selectedEmails.length > 0
+              ? 'text-blue-400 hover:bg-blue-900/30'
+              : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
+            'disabled:opacity-30',
+          )}
+        >
+          <Paperclip className="h-4 w-4" />
+        </button>
+
         <textarea
           value={value}
           onChange={e => setValue(e.target.value)}

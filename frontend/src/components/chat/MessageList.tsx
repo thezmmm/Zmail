@@ -8,12 +8,14 @@ interface MessageListProps {
   messages: AgentMessage[]
   isStreaming: boolean
   streamingContent: string
+  toolStatus: string | null
 }
 
 export default function MessageList({
   messages,
   isStreaming,
   streamingContent,
+  toolStatus,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -34,7 +36,7 @@ export default function MessageList({
         {messages.map(msg => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
-        {isStreaming && <StreamingBubble content={streamingContent} />}
+        {isStreaming && <StreamingBubble content={streamingContent} toolStatus={toolStatus} />}
       </div>
       <div ref={bottomRef} />
     </div>

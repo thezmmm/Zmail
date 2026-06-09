@@ -8,6 +8,7 @@ import com.zmail.agent.model.EmailDigest;
 import com.zmail.agent.model.EmailRef;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.service.tool.ToolMemoryId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -16,25 +17,29 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * Tools available to the MainAgent LLM. Email refs for the current request are
  * registered by ChatController before invoking the agent, and cleared after.
+ * The sessionId is injected automatically by LangChain4j via @ToolMemoryId —
+ * the LLM never needs to know or pass its own session ID.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class MainAgentTools {
 
-    private final DigestAgentGraph     digestAgentGraph;
-    private final ActionAgentService   actionAgentService;
+    private final DigestAgentGraph      digestAgentGraph;
+    private final ActionAgentService    actionAgentService;
     private final EmailEmbeddingService emailEmbeddingService;
 
-    /** sessionId → (userId, emailRefs) for the pending request. */
+    /** sessionId → (userId, emailRefs, onToolStatus) for the pending request. */
     private final Map<String, PendingContext> pendingContexts = new ConcurrentHashMap<>();
 
-    public void registerContext(String sessionId, UUID userId, List<EmailRef> emailRefs) {
-        pendingContexts.put(sessionId, new PendingContext(userId, emailRefs));
+    public void registerContext(String sessionId, UUID userId,
+                                List<EmailRef> emailRefs, Consumer<String> onToolStatus) {
+        pendingContexts.put(sessionId, new PendingContext(userId, emailRefs, onToolStatus));
     }
 
     public void clearContext(String sessionId) {
@@ -45,8 +50,7 @@ public class MainAgentTools {
 
     @Tool("Analyze and summarize the emails the user has selected. " +
           "Call this when the user wants a digest, overview, or plan for their selected emails.")
-    public String analyzeSelectedEmails(
-            @P("The current session ID") String sessionId) {
+    public String analyzeSelectedEmails(@ToolMemoryId String sessionId) {
 
         PendingContext ctx = pendingContexts.get(sessionId);
         if (ctx == null || ctx.emailRefs().isEmpty()) {
@@ -54,6 +58,7 @@ public class MainAgentTools {
                    "Please ask the user to select emails in the UI first.";
         }
 
+        ctx.onToolStatus().accept("正在分析选中的邮件…");
         log.info("analyzeSelectedEmails called for session {} ({} emails)",
                 sessionId, ctx.emailRefs().size());
 
@@ -63,7 +68,7 @@ public class MainAgentTools {
 
     @Tool("Draft a reply for a specific email based on the user's instructions.")
     public String draftEmailReply(
-            @P("The current session ID") String sessionId,
+            @ToolMemoryId String sessionId,
             @P("The provider ID of the email to reply to") String emailProviderId,
             @P("The user's instruction for the reply") String instruction) {
 
@@ -79,6 +84,7 @@ public class MainAgentTools {
             return "Email " + emailProviderId + " is not in the selected set.";
         }
 
+        ctx.onToolStatus().accept("正在起草回复…");
         String draft = actionAgentService.draftReply(ctx.userId(), ref, instruction);
         log.info("draftEmailReply generated for email {} in session {}", emailProviderId, sessionId);
         return "Here is a draft reply:\n\n" + draft;
@@ -86,7 +92,7 @@ public class MainAgentTools {
 
     @Tool("Answer a question about a specific email (e.g. what action is required, who sent it, key details).")
     public String askAboutEmail(
-            @P("The current session ID") String sessionId,
+            @ToolMemoryId String sessionId,
             @P("The provider ID of the email") String emailProviderId,
             @P("The user's question about the email") String question) {
 
@@ -102,18 +108,20 @@ public class MainAgentTools {
             return "Email " + emailProviderId + " is not in the selected set.";
         }
 
+        ctx.onToolStatus().accept("正在查询邮件详情…");
         return actionAgentService.analyzeEmail(ctx.userId(), ref, question);
     }
 
     @Tool("Search past emails by meaning or topic. Call this when the user asks questions like " +
           "'find emails about X', 'do I have any emails regarding Y', or 'what emails mentioned Z'.")
     public String searchEmailsByMeaning(
-            @P("The current session ID") String sessionId,
+            @ToolMemoryId String sessionId,
             @P("A natural language description of what emails to find") String query) {
 
         PendingContext ctx = pendingContexts.get(sessionId);
         if (ctx == null) return "Session context not found.";
 
+        ctx.onToolStatus().accept("正在语义搜索邮件…");
         List<EmailEmbeddingService.SimilarEmailResult> results =
                 emailEmbeddingService.search(ctx.userId(), query, 5);
 
@@ -160,5 +168,5 @@ public class MainAgentTools {
         return sb.toString();
     }
 
-    private record PendingContext(UUID userId, List<EmailRef> emailRefs) {}
+    private record PendingContext(UUID userId, List<EmailRef> emailRefs, Consumer<String> onToolStatus) {}
 }
