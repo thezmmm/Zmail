@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { useResults } from '@/hooks/useResults'
 import { useEmailSearch } from '@/hooks/useEmailSearch'
+import { useSyncEmails } from '@/hooks/useAccounts'
 import ResultCard from '@/components/email/ResultCard'
 import CategoryBadge from '@/components/email/CategoryBadge'
 import PriorityBadge from '@/components/email/PriorityBadge'
@@ -33,6 +34,7 @@ export default function InboxPage() {
   }, [searchInput])
 
   const isSearching = searchQuery.length > 0
+  const { mutate: syncEmails, isPending: isSyncing } = useSyncEmails()
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
     useResults(isSearching ? undefined : category)
@@ -84,7 +86,23 @@ export default function InboxPage() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="border-b border-gray-800 px-6 py-4">
-        <h1 className="text-base font-semibold text-gray-100">收件箱</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-base font-semibold text-gray-100">收件箱</h1>
+          <button
+            onClick={() => syncEmails()}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200 disabled:opacity-50"
+          >
+            <svg
+              className={cn('h-3.5 w-3.5', isSyncing && 'animate-spin')}
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {isSyncing ? '同步中…' : '立即同步'}
+          </button>
+        </div>
 
         {/* Search */}
         <div className="mt-3 relative">

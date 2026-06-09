@@ -3,6 +3,22 @@ import { toast } from 'sonner'
 import api, { unwrap } from '@/lib/api'
 import type { AccountDto, ApiResponse, ReauthDto, SyncStatus } from '@/types'
 
+export function useSyncEmails() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.post<ApiResponse<number>>('/accounts/sync').then(unwrap),
+    onSuccess: count => {
+      toast.success(count > 0 ? `同步完成，新增 ${count} 封邮件` : '已是最新，无新邮件')
+      qc.invalidateQueries({ queryKey: ['results'] })
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error
+      toast.error(msg ?? '同步失败，请稍后再试')
+    },
+  })
+}
+
 export function useAccounts() {
   return useQuery({
     queryKey: ['accounts'],
