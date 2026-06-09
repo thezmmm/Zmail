@@ -111,6 +111,15 @@ export interface Draft {
   updatedAt: string
 }
 
+export interface SimilarEmailResult {
+  id: string
+  subject: string
+  sender: string
+  summary: string | null
+  category: Category
+  priority: Priority
+}
+
 export interface CreateDraftRequest {
   accountId: string
   to: string[]

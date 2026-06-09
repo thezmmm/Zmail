@@ -3,6 +3,8 @@ package com.zmail.controller;
 import com.zmail.model.ApiResponse;
 import com.zmail.model.ProcessingResult;
 import com.zmail.model.ProcessingResultRepository;
+import com.zmail.service.EmailEmbeddingService;
+import com.zmail.service.EmailEmbeddingService.SimilarEmailResult;
 import com.zmail.service.EmailProcessingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
@@ -29,6 +32,7 @@ public class ResultController {
 
     private final ProcessingResultRepository repository;
     private final EmailProcessingService processingService;
+    private final EmailEmbeddingService embeddingService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ProcessingResult>>> list(
@@ -47,6 +51,19 @@ public class ResultController {
                 ? repository.findByUserIdAndCategory(userId, category, pageable)
                 : repository.findByUserId(userId, pageable);
         return ResponseEntity.ok(ApiResponse.ok(page));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<List<SimilarEmailResult>>> search(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "10") int topK,
+            Authentication auth) {
+        if (q == null || q.isBlank()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Query must not be blank"));
+        }
+        UUID userId = UUID.fromString(auth.getName());
+        List<SimilarEmailResult> results = embeddingService.search(userId, q, Math.min(topK, 50));
+        return ResponseEntity.ok(ApiResponse.ok(results));
     }
 
     @GetMapping("/{id}")
