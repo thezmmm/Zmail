@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import dev.langchain4j.exception.HttpException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import java.util.NoSuchElementException;
@@ -41,6 +42,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleConflict(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(e.getMessage()));
+    }
+
+    /** LangChain4j upstream API error — convert to appropriate HTTP status instead of 500. */
+    @ExceptionHandler(HttpException.class)
+    public ResponseEntity<ApiResponse<Void>> handleLlmHttpError(HttpException e) {
+        int status = e.statusCode();
+        if (status == 429) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(ApiResponse.error("AI 服务请求频率限制，请稍后重试。"));
+        }
+        log.error("LLM API HTTP {}: {}", status, e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.error("AI 服务暂时不可用（HTTP " + status + "）"));
     }
 
     /** Client closed the SSE/async connection before the response was fully written — not an error. */

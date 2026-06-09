@@ -109,14 +109,27 @@ public class ChatController {
                     mainAgentTools.clearContext(req.sessionId());
                     if (emitterDone.compareAndSet(false, true)) {
                         log.error("Chat error for session {}: {}", req.sessionId(), err.getMessage());
-                        emitter.completeWithError(err);
+                        // Send error as SSE event so Spring doesn't dispatch through @ControllerAdvice
+                        // (which would produce a misleading 500 response)
+                        try {
+                            emitter.send(SseEmitter.event().name("error").data(toLlmErrorMessage(err)));
+                        } catch (IOException ignored) {}
+                        emitter.complete();
                     } else {
-                        // emitter already closed (client disconnected) — cascade error, not a real failure
                         log.debug("Chat stream ended after client disconnect for session {}", req.sessionId());
                     }
                 })
                 .start();
 
         return emitter;
+    }
+
+    private static String toLlmErrorMessage(Throwable err) {
+        String msg = err.getMessage();
+        if (msg == null) return "请求失败，请稍后重试。";
+        if (msg.contains("429")) return "AI 服务请求频率限制，请稍后重试。";
+        if (msg.contains("401") || msg.contains("403")) return "AI 服务认证失败，请检查配置。";
+        if (msg.contains("timeout") || msg.contains("timed out")) return "AI 服务响应超时，请重试。";
+        return "AI 服务暂时不可用，请稍后重试。";
     }
 }

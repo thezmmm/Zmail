@@ -118,6 +118,9 @@ export function useChat(sessionId: string | null) {
               setToolStatus(eventData)
             } else if (eventType === 'done') {
               commitAssistant()
+            } else if (eventType === 'error') {
+              accumulated = eventData || '请求失败，请稍后重试。'
+              commitAssistant()
             } else if (eventType === 'session_title' && eventData.trim()) {
               const title = eventData.trim()
               qc.setQueryData<AgentSession[]>(['sessions'], prev =>
