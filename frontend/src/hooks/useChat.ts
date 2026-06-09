@@ -74,7 +74,6 @@ export function useChat(sessionId: string | null) {
             createdAt: new Date().toISOString(),
           },
         ])
-        qc.invalidateQueries({ queryKey: ['sessions'] })
       }
 
       try {
@@ -147,6 +146,9 @@ export function useChat(sessionId: string | null) {
         setIsStreaming(false)
         setStreamingContent('')
         setToolStatus(null)
+        // Refetch after the full SSE stream (including session_title) is consumed,
+        // so the sessions list always sees the final title written to DB.
+        qc.invalidateQueries({ queryKey: ['sessions'] })
       }
     },
     [sessionId, isStreaming, qc],

@@ -56,7 +56,9 @@ public class AgentSessionService {
         msg.setSession(session);
         msg.setRole(role);
         msg.setContent(content);
-        return messageRepo.save(msg);
+        AgentMessage saved = messageRepo.save(msg);
+        sessionRepo.touchUpdatedAt(sessionId);
+        return saved;
     }
 
     @Transactional
