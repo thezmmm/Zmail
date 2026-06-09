@@ -81,6 +81,14 @@ public class ChatController {
                             assistantResponse.toString());
                     mainAgentTools.clearContext(req.sessionId());
                     sessionMemoryManager.maybeCompress(session.getId(), userId);
+
+                    // Auto-generate title on first exchange (before sending "done" so the
+                    // frontend's invalidateQueries sees the updated title immediately)
+                    String t = session.getTitle();
+                    if ("新对话".equals(t) || "New conversation".equals(t)) {
+                        sessionService.generateAndSaveTitle(session.getId(), req.message());
+                    }
+
                     if (emitterDone.compareAndSet(false, true)) {
                         try {
                             emitter.send(SseEmitter.event().name("done").data("[DONE]"));

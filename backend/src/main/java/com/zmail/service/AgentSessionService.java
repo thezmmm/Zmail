@@ -4,7 +4,10 @@ import com.zmail.model.AgentMessage;
 import com.zmail.model.AgentMessageRepository;
 import com.zmail.model.AgentSession;
 import com.zmail.model.AgentSessionRepository;
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,10 +16,13 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AgentSessionService {
 
     private final AgentSessionRepository sessionRepo;
     private final AgentMessageRepository messageRepo;
+    @Qualifier("classifyModel")
+    private final ChatLanguageModel classifyModel;
 
     @Transactional
     public AgentSession create(UUID userId, String title) {
@@ -72,9 +78,32 @@ public class AgentSessionService {
         sessionRepo.delete(s);
     }
 
-    /** Auto-generate a title from the first user message (truncate at 60 chars). */
-    public String generateTitle(String firstMessage) {
-        String t = firstMessage.trim().replaceAll("\\s+", " ");
-        return t.length() > 60 ? t.substring(0, 57) + "..." : t;
+    /**
+     * Calls gpt-4o-mini to generate a short title from the first user message,
+     * then persists it. Falls back to truncated text if the LLM call fails.
+     * Only called once per session (when title is still the default "新对话").
+     */
+    @Transactional
+    public String generateAndSaveTitle(UUID sessionId, String firstUserMessage) {
+        String prompt = "Generate a short conversation title based on the user's first message. " +
+                "Rules: same language as the message, max 12 characters for Chinese/Japanese/Korean " +
+                "or max 6 words for other languages, no quotes, no trailing punctuation.\n\n" +
+                "Message: " + firstUserMessage + "\nTitle:";
+        String title;
+        try {
+            String raw = classifyModel.chat(prompt).trim();
+            title = raw.length() > 30 ? raw.substring(0, 27) + "…" : raw;
+        } catch (Exception e) {
+            log.warn("Title generation failed for session {}, falling back to truncation", sessionId, e);
+            String t = firstUserMessage.trim().replaceAll("\\s+", " ");
+            title = t.length() > 20 ? t.substring(0, 17) + "…" : t;
+        }
+
+        AgentSession s = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+        s.setTitle(title);
+        sessionRepo.save(s);
+        log.debug("Generated title for session {}: {}", sessionId, title);
+        return title;
     }
 }

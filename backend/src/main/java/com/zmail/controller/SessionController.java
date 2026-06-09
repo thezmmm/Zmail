@@ -35,7 +35,7 @@ public class SessionController {
             @RequestBody(required = false) CreateSessionRequest req, Authentication auth) {
         UUID userId = UUID.fromString(auth.getName());
         String title = (req != null && req.title() != null && !req.title().isBlank())
-                ? req.title() : "New conversation";
+                ? req.title() : "新对话";
         AgentSession s = sessionService.create(userId, title);
         return ResponseEntity.ok(ApiResponse.ok(toDto(s)));
     }
