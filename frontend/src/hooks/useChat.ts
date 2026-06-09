@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getToken } from '@/lib/auth'
-import type { AgentMessage, ChatRequest, EmailRef } from '@/types'
+import type { AgentMessage, AgentSession, ChatRequest, EmailRef } from '@/types'
 
 /**
  * Parse one SSE message block (content between two \n\n separators).
@@ -118,6 +118,11 @@ export function useChat(sessionId: string | null) {
               setToolStatus(eventData)
             } else if (eventType === 'done') {
               commitAssistant()
+            } else if (eventType === 'session_title' && eventData.trim()) {
+              const title = eventData.trim()
+              qc.setQueryData<AgentSession[]>(['sessions'], prev =>
+                prev?.map(s => s.id === sessionId ? { ...s, title } : s) ?? []
+              )
             }
           }
         }
