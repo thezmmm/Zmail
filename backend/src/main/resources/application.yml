@@ -116,7 +116,6 @@ zmail:
     collection-name: email_embeddings
 
   embedding:
-    api-key: ${OPENAI_API_KEY:dev-placeholder-set-real-key}
     model-name: text-embedding-3-small
 
 # ── Server ───────────────────────────────────────────────────────────────────
