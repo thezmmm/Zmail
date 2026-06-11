@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -129,14 +131,23 @@ public class EmailProcessingService {
         result.setAnalyzed(true);
         ProcessingResult saved = resultRepository.save(result);
 
-        emailEmbeddingService.embed(saved);
+        // Schedule embed AFTER the transaction commits so the pessimistic write lock is
+        // released before the OpenAI HTTP call (which can take 1–3 s).
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                CompletableFuture.runAsync(() -> emailEmbeddingService.embed(saved), agentExecutor);
+            }
+        });
         return saved;
     }
 
     /** User-initiated draft generation. */
     @Transactional
     public ProcessingResult generateDraft(UUID userId, UUID resultId) {
-        ProcessingResult result = resultRepository.findById(resultId)
+        // Pessimistic lock: prevents concurrent requests from both passing the
+        // PENDING_REVIEW check and each firing a separate LLM draft generation.
+        ProcessingResult result = resultRepository.findByIdForUpdate(resultId)
                 .orElseThrow(() -> new NoSuchElementException("Result not found: " + resultId));
         if (!result.getUserId().equals(userId)) throw new SecurityException("Access denied");
 
