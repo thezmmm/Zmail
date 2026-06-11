@@ -54,12 +54,14 @@ public class MemoryConsolidationJob {
                 return;
             }
 
-            int count = 0;
+            int succeeded = 0;
+            int failed = 0;
             for (ProcessingResult result : unembedded) {
-                embeddingService.embed(result);
-                count++;
+                if (embeddingService.embed(result)) succeeded++;
+                else failed++;
             }
-            log.info("MemoryConsolidationJob user {} — embedded {} emails", userId, count);
+            log.info("MemoryConsolidationJob user {} — embedded {}/{} emails (failed={})",
+                    userId, succeeded, unembedded.size(), failed);
         } catch (Exception e) {
             log.error("Memory consolidation failed for user {}: {}", userId, e.getMessage(), e);
         } finally {

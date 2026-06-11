@@ -21,9 +21,10 @@ public class EmailEmbeddingService {
     private final EmbeddingModel embeddingModel;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final com.zmail.config.AgentProperties agentProperties;
 
-    /** Embeds the email summary and persists it to email_embeddings. Errors are swallowed. */
-    public void embed(ProcessingResult result) {
+    /** Embeds the email summary and persists it to email_embeddings. Returns false on failure. */
+    public boolean embed(ProcessingResult result) {
         try {
             String content = buildContent(result);
             float[] vector = embeddingModel.embed(content).content().vector();
@@ -31,7 +32,10 @@ public class EmailEmbeddingService {
             jdbcTemplate.update(
                 "INSERT INTO email_embeddings (user_id, source_id, content, embedding, metadata) " +
                 "VALUES (?, ?, ?, ?::vector, ?::jsonb) " +
-                "ON CONFLICT (user_id, source_id) DO NOTHING",
+                "ON CONFLICT (user_id, source_id) DO UPDATE " +
+                "  SET content = EXCLUDED.content, " +
+                "      embedding = EXCLUDED.embedding, " +
+                "      metadata = EXCLUDED.metadata",
                 result.getUserId(),
                 result.getEmailProviderId(),
                 content,
@@ -39,9 +43,11 @@ public class EmailEmbeddingService {
                 buildMetadata(result)
             );
             log.debug("Embedded email {} for user {}", result.getEmailProviderId(), result.getUserId());
+            return true;
         } catch (Exception e) {
             log.warn("Failed to embed email {} for user {}: {}",
                 result.getEmailProviderId(), result.getUserId(), e.getMessage());
+            return false;
         }
     }
 
@@ -67,11 +73,14 @@ public class EmailEmbeddingService {
                         "JOIN processing_results pr " +
                         "  ON pr.email_provider_id = ee.source_id AND pr.user_id = ee.user_id " +
                         "WHERE ee.user_id = ? " +
+                        "  AND ee.embedding <=> ?::vector < ? " +
                         "ORDER BY ee.embedding <=> ?::vector " +
                         "LIMIT ?")) {
                     ps.setObject(1, userId);
                     ps.setString(2, vec);
-                    ps.setInt(3, topK);
+                    ps.setDouble(3, agentProperties.getEmbeddingSearchThreshold());
+                    ps.setString(4, vec);
+                    ps.setInt(5, topK);
                     try (ResultSet rs = ps.executeQuery()) {
                         List<SimilarEmailResult> results = new ArrayList<>();
                         while (rs.next()) {
@@ -106,7 +115,7 @@ public class EmailEmbeddingService {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < vector.length; i++) {
             if (i > 0) sb.append(",");
-            sb.append(vector[i]);
+            sb.append(String.format("%.8f", vector[i]));
         }
         return sb.append("]").toString();
     }

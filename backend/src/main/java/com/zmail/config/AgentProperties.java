@@ -23,6 +23,8 @@ public class AgentProperties {
     private long minRunIntervalMs = 60_000;
     /** Max concurrent LLM calls per agent run (bounds API parallelism). */
     private int maxParallelLlmCalls = 5;
+    /** Cosine-distance threshold for semantic email search (0=identical, 2=opposite); default 0.8. */
+    private double embeddingSearchThreshold = 0.8;
 
     @PostConstruct
     void validate() {
