@@ -13,5 +13,6 @@ export function useEmailSearch(query: string) {
         .then(unwrap),
     enabled: query.trim().length > 0,
     staleTime: 30_000,
+    retry: 0,
   })
 }
