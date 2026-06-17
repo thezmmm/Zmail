@@ -35,6 +35,7 @@ export function useChat(sessionId: string | null) {
   const qc = useQueryClient()
   const [isStreaming, setIsStreaming]           = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [streamingDone, setStreamingDone]       = useState(false)
   const [toolStatus, setToolStatus]             = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -124,6 +125,8 @@ export function useChat(sessionId: string | null) {
               setToolStatus(eventData)
             } else if (eventType === 'done') {
               commitAssistant()
+              setStreamingContent('')
+              setStreamingDone(true)
             } else if (eventType === 'error') {
               accumulated = eventData || '请求失败，请稍后重试。'
               commitAssistant()
@@ -152,6 +155,7 @@ export function useChat(sessionId: string | null) {
       } finally {
         setIsStreaming(false)
         setStreamingContent('')
+        setStreamingDone(false)
         setToolStatus(null)
         // Refetch after the full SSE stream (including session_title) is consumed,
         // so the sessions list always sees the final title written to DB.
@@ -165,5 +169,5 @@ export function useChat(sessionId: string | null) {
     abortRef.current?.abort()
   }, [])
 
-  return { sendMessage, isStreaming, streamingContent, toolStatus, abort }
+  return { sendMessage, isStreaming, streamingContent, streamingDone, toolStatus, abort }
 }

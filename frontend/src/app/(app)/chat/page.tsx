@@ -20,7 +20,7 @@ export default function ChatPage() {
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedSessionId)
   const createSession = useCreateSession()
   const deleteSession = useDeleteSession()
-  const { sendMessage, isStreaming, streamingContent, toolStatus, abort } =
+  const { sendMessage, isStreaming, streamingContent, streamingDone, toolStatus, abort } =
     useChat(selectedSessionId)
 
   async function handleNewSession() {
@@ -104,6 +104,7 @@ export default function ChatPage() {
                 messages={messages}
                 isStreaming={isStreaming}
                 streamingContent={streamingContent}
+                streamingDone={streamingDone}
                 toolStatus={toolStatus}
               />
             )}

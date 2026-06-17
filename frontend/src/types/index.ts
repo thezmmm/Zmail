@@ -66,10 +66,7 @@ export interface ProcessingResult {
 
 export interface AgentSession {
   id: string
-  userId: string
   title: string
-  summary: string | null
-  compressedUntil: number
   createdAt: string
   updatedAt: string
 }
