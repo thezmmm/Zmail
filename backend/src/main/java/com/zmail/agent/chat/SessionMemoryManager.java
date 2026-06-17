@@ -57,6 +57,9 @@ public class SessionMemoryManager {
                 }
             }));
 
+    /** Sessions currently undergoing compression — prevents duplicate concurrent LLM calls. */
+    private final Set<String> compressing = ConcurrentHashMap.newKeySet();
+
     /** sessionId → total message count at the time of last compression. */
     private final java.util.Map<String, Integer> lastCompressedTotal = Collections.synchronizedMap(
             new LinkedHashMap<>(MAX_TRACKED_SESSIONS, 0.75f, true) {
@@ -134,14 +137,22 @@ public class SessionMemoryManager {
 
         List<AgentMessage> toCompress = allMessages.subList(compressedUntil, safeEnd);
 
-        AgentSession session = sessionRepo.findById(sessionId).orElseThrow();
-        String newSummary = compress(session.getSummary(), toCompress);
-
-        sessionService.updateSummaryAndCompressedUntil(sessionId, newSummary, safeEnd);
-        lastCompressedTotal.put(sessionId.toString(), safeEnd);
-
-        log.info("Compressed messages[{}..{}] for session {} (total={})",
-                compressedUntil, safeEnd, sessionId, total);
+        // Guard: if another thread is already compressing this session, skip — it will
+        // advance lastCompressedTotal, so the next message will re-evaluate correctly.
+        if (!compressing.add(sessionId.toString())) return;
+        try {
+            AgentSession session = sessionRepo.findById(sessionId).orElseThrow();
+            String newSummary = compress(session.getSummary(), toCompress);
+            sessionService.updateSummaryAndCompressedUntil(sessionId, newSummary, safeEnd);
+            lastCompressedTotal.put(sessionId.toString(), safeEnd);
+            log.info("Compressed messages[{}..{}] for session {} (total={})",
+                    compressedUntil, safeEnd, sessionId, total);
+        } catch (Exception e) {
+            log.warn("Compression failed for session {}, will retry on next message: {}",
+                    sessionId, e.getMessage());
+        } finally {
+            compressing.remove(sessionId.toString());
+        }
     }
 
     public void evict(UUID sessionId) {

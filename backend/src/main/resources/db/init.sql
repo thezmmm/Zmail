@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS processing_results (
     received_at         TIMESTAMPTZ,
     processed_at        TIMESTAMPTZ NOT NULL,
     analyzed            BOOLEAN NOT NULL DEFAULT FALSE,
-    UNIQUE (user_id, email_provider_id)
+    UNIQUE (user_id, account_id, email_provider_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pr_user_id      ON processing_results(user_id);

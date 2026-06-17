@@ -37,16 +37,16 @@ public class EmailEmbeddingService {
                 "      embedding = EXCLUDED.embedding, " +
                 "      metadata = EXCLUDED.metadata",
                 result.getUserId(),
-                result.getEmailProviderId(),
+                sourceId(result),
                 content,
                 toVectorString(vector),
                 buildMetadata(result)
             );
-            log.debug("Embedded email {} for user {}", result.getEmailProviderId(), result.getUserId());
+            log.debug("Embedded email {} for user {}", sourceId(result), result.getUserId());
             return true;
         } catch (Exception e) {
             log.warn("Failed to embed email {} for user {}: {}",
-                result.getEmailProviderId(), result.getUserId(), e.getMessage());
+                sourceId(result), result.getUserId(), e.getMessage());
             return false;
         }
     }
@@ -71,7 +71,7 @@ public class EmailEmbeddingService {
                         "SELECT pr.id, pr.subject, pr.sender, pr.summary, pr.category, pr.priority " +
                         "FROM email_embeddings ee " +
                         "JOIN processing_results pr " +
-                        "  ON pr.email_provider_id = ee.source_id AND pr.user_id = ee.user_id " +
+                        "  ON pr.account_id::text || ':' || pr.email_provider_id = ee.source_id AND pr.user_id = ee.user_id " +
                         "WHERE ee.user_id = ? " +
                         "  AND ee.embedding <=> ?::vector < ? " +
                         "ORDER BY ee.embedding <=> ?::vector " +
@@ -130,6 +130,10 @@ public class EmailEmbeddingService {
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    private static String sourceId(ProcessingResult result) {
+        return result.getAccountId() + ":" + result.getEmailProviderId();
     }
 
     private String nullSafe(String s) {

@@ -24,7 +24,7 @@ spring:
   data:
     redis:
       host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6380}
+      port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       timeout: 3000ms
       lettuce:
@@ -104,7 +104,6 @@ zmail:
 
   scheduler:
     email-sync-cron: "0 */5 * * * *"
-    daily-summary-cron: "0 0 8 * * *"
     memory-consolidation-cron: "0 30 0 * * *"
 
   proxy:

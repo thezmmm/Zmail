@@ -159,7 +159,6 @@ public class EmailProcessingService {
 
         EmailRef ref = new EmailRef(result.getEmailProviderId(), result.getAccountId());
         String draftBody = actionAgentService.draftReply(userId, ref, "Draft a professional reply to this email.");
-        result.setReplyDraft(draftBody);
         result.setDraftStatus(DraftStatus.PENDING_REVIEW);
         ProcessingResult saved = resultRepository.save(result);
 

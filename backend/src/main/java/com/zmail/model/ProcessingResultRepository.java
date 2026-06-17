@@ -49,7 +49,7 @@ public interface ProcessingResultRepository extends JpaRepository<ProcessingResu
               AND NOT EXISTS (
                   SELECT 1 FROM email_embeddings ee
                   WHERE ee.user_id = pr.user_id
-                    AND ee.source_id = pr.email_provider_id
+                    AND ee.source_id = pr.account_id::text || ':' || pr.email_provider_id
               )
             LIMIT :limit
             """, nativeQuery = true)
