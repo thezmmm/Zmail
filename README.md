@@ -182,7 +182,7 @@ FetchSelected → Summarize（并发）→ GenerateDigest
 
 - 同一用户的初始同步正在进行中时，定时任务会自动跳过该用户，避免 LLM classify 重复调用
 - `RunGuard` 保证同一用户定时同步不并发（60s 最小间隔）
-- `isAlreadyProcessed()` + DB unique 约束（`user_id, email_provider_id`）双重防止重复入库
+- `isAlreadyProcessed()` + DB unique 约束（`user_id, account_id, email_provider_id`）双重防止重复入库
 - 多账户中单个账户失败时，其余账户继续正常同步
 
 ### AI 处理流水线（三阶段按需触发）
@@ -255,7 +255,7 @@ AI 同步处理完的邮件存在 `processing_results` 表，是前端主收件�
 | `POST` | `/results/{id}/analyze` | 触发按需深度分析（幂等，`analyzed=true` 后直接返回） |
 | `POST` | `/results/{id}/draft` | 手动生成 AI 回复草稿（幂等，存在待审批草稿时直接返回） |
 
-处理结果包含字段：`category`、`priority`、`sentiment`、`receivedAt`、`summary`、`actionItems`、`analyzed`、`actionTaken`、`draftStatus`、`replyDraft` 等。
+处理结果包含字段：`category`、`priority`、`sentiment`、`receivedAt`、`summary`、`actionItems`、`analyzed`、`actionTaken`、`draftStatus` 等。
 
 ### 草稿管理
 
@@ -300,7 +300,10 @@ Authorization: Bearer <token>
 | 事件名 | 数据 | 说明 |
 |---|---|---|
 | `token` | 文本片段 | LLM 流式输出的增量 token |
+| `tool_start` | 工具描述文本 | Agent 开始调用某个工具（如"正在分析邮件…"） |
+| `session_title` | 标题字符串 | 首轮对话后异步生成的会话标题 |
 | `done` | `[DONE]` | 流结束 |
+| `error` | 错误描述 | LLM 或工具调用失败，前端展示为 assistant 消息 |
 
 ### 账号管理
 
@@ -394,8 +397,7 @@ zmail/
 | 任务 | 触发时间 | 状态 | 说明 |
 |---|---|---|---|
 | `EmailSyncJob` | 每 5 分钟 | ✅ 已实现 | 按水印时间拉取新邮件 → 仅分类（category / priority / sentiment）→ 写 `processing_results`；摘要和草稿按需触发 |
-| `DailySummaryJob` | 每天 08:00 | 🚧 待实现 | 聚合 `processing_results` 生成今日任务清单 |
-| `MemoryConsolidationJob` | 每天 00:00 | 🚧 待实现 | 压缩历史邮件记忆到 pgvector |
+| `MemoryConsolidationJob` | 每天 00:30 | ✅ 已实现 | 对已完成深度分析（`analyzed=true`）但尚未 Embedding 的邮件批量写入 pgvector |
 
 ## 常用命令
 

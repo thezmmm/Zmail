@@ -49,6 +49,7 @@ src/app/
 │   ├── page.tsx                # 收件箱（AI 处理结果列表）
 │   ├── emails/[id]/page.tsx    # 邮件详情
 │   ├── drafts/page.tsx         # 草稿审批队列
+│   ├── digest/page.tsx         # 今日日报（AI 生成每日邮件摘要）
 │   ├── chat/page.tsx           # Agent 对话
 │   └── accounts/page.tsx       # 账户管理
 ├── login/page.tsx              # OAuth 登录入口
@@ -172,14 +173,3 @@ hooks 统一放 `src/hooks/`，每个模块一个文件：`useResults.ts`、`use
 | 情感 NEGATIVE | `text-red-400` |
 | 重新授权警告 | `text-orange-400 bg-orange-900/30` |
 
----
-
-## 实施顺序
-
-1. `(app)/layout.tsx` — App shell、Sidebar、认证守卫
-2. 收件箱主页 + ResultCard、PriorityBadge、CategoryBadge
-3. 邮件详情页
-4. 草稿审批页 + 乐观更新
-5. `useChat` SSE hook + 对话页面
-6. 账户管理页
-7. 基础 UI 组件（Button、Badge、Spinner、EmptyState）按需提取

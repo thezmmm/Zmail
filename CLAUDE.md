@@ -14,7 +14,7 @@ Zmail is an AI-powered email agent desktop application that reads, summarizes, c
 | Desktop UI | Tauri 2.x (Rust shell) |
 | Frontend | Next.js 15 + React 19 + TypeScript |
 | Backend | Spring Boot 3.4 |
-| Agent orchestration | LangGraph4j 0.6 |
+| Agent orchestration | LangGraph4j 1.8 |
 | LLM interaction | LangChain4j 1.0 + OpenAI API (gpt-4o / gpt-4o-mini) |
 | Vector memory | PostgreSQL 16 + pgvector |
 | Cache / session memory | Redis 7 |
