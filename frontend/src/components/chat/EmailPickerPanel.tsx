@@ -18,9 +18,9 @@ export default function EmailPickerPanel({
   onClose,
 }: EmailPickerPanelProps) {
   const [filter, setFilter] = useState('')
-  const { data } = useResults()
+  const { data } = useResults(undefined, 0)
 
-  const allEmails = data?.pages.flatMap(p => p.content) ?? []
+  const allEmails = data?.content ?? []
   const filtered = filter.trim()
     ? allEmails.filter(
         e =>

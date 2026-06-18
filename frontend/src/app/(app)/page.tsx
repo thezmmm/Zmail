@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useResults } from '@/hooks/useResults'
 import { useEmailSearch } from '@/hooks/useEmailSearch'
-import { useSyncEmails } from '@/hooks/useAccounts'
 import ResultCard from '@/components/email/ResultCard'
 import CategoryBadge from '@/components/email/CategoryBadge'
 import PriorityBadge from '@/components/email/PriorityBadge'
 import EmptyState from '@/components/ui/EmptyState'
 import Spinner from '@/components/ui/Spinner'
+import Button from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import type { Category } from '@/types'
 
@@ -24,6 +25,7 @@ const TABS: { label: string; value: Category | undefined }[] = [
 
 export default function InboxPage() {
   const [category, setCategory]       = useState<Category | undefined>(undefined)
+  const [page, setPage]               = useState(0)
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -34,10 +36,9 @@ export default function InboxPage() {
   }, [searchInput])
 
   const isSearching = searchQuery.length > 0
-  const { mutate: syncEmails, isPending: isSyncing } = useSyncEmails()
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
-    useResults(isSearching ? undefined : category)
+  const { data, isLoading, isFetching, isError } =
+    useResults(isSearching ? undefined : category, page)
 
   const {
     data: searchResults,
@@ -45,38 +46,17 @@ export default function InboxPage() {
     isError: isSearchError,
   } = useEmailSearch(searchQuery)
 
-  const sentinelRef = useRef<HTMLDivElement>(null)
-  const listRef     = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
-  // Scroll list back to top whenever the category filter changes
+  // Scroll list back to top whenever the page or category filter changes
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0 })
-  }, [category])
+  }, [category, page])
 
-  // Trigger next page when sentinel enters viewport
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
-          fetchNextPage()
-        }
-      },
-      { rootMargin: '200px' },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
-
-  const results = useMemo(
-    () => [
-      ...new Map(
-        (data?.pages.flatMap(p => p.content) ?? []).map(r => [r.id, r]),
-      ).values(),
-    ],
-    [data],
-  )
+  function changeCategory(value: Category | undefined) {
+    setCategory(value)
+    setPage(0)
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -84,20 +64,6 @@ export default function InboxPage() {
       <div className="border-b border-gray-800 px-6 py-4">
         <div className="flex items-center justify-between">
           <h1 className="text-base font-semibold text-gray-100">收件箱</h1>
-          <button
-            onClick={() => syncEmails()}
-            disabled={isSyncing}
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200 disabled:opacity-50"
-          >
-            <svg
-              className={cn('h-3.5 w-3.5', isSyncing && 'animate-spin')}
-              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {isSyncing ? '同步中…' : '立即同步'}
-          </button>
         </div>
 
         {/* Search */}
@@ -125,7 +91,7 @@ export default function InboxPage() {
             {TABS.map(tab => (
               <button
                 key={tab.label}
-                onClick={() => setCategory(tab.value)}
+                onClick={() => changeCategory(tab.value)}
                 className={cn(
                   'rounded-full px-3 py-1 text-xs transition-colors',
                   category === tab.value
@@ -183,23 +149,47 @@ export default function InboxPage() {
           <div className="flex justify-center pt-20"><Spinner /></div>
         ) : isError ? (
           <EmptyState title="加载失败" description="请检查后端服务是否正常运行" />
-        ) : results.length === 0 ? (
+        ) : !data || (data.content.length === 0 && page === 0) ? (
           <EmptyState title="暂无邮件" description="邮件处理完成后将显示在这里" />
         ) : (
-          <div className="space-y-2">
-            {results.map(result => (
-              <ResultCard key={result.id} result={result} />
-            ))}
-
-            {/* Sentinel — triggers next page load when visible */}
-            <div ref={sentinelRef} className="h-4" />
-
-            {isFetchingNextPage && (
-              <div className="flex justify-center py-3">
-                <Spinner className="h-4 w-4" />
+          <>
+            {isFetching ? (
+              <div className="flex justify-center py-16"><Spinner /></div>
+            ) : data.content.length === 0 ? (
+              <EmptyState title="没有更多邮件了" description="已经是最后一页" />
+            ) : (
+              <div className="space-y-2">
+                {data.content.map(result => (
+                  <ResultCard key={result.id} result={result} />
+                ))}
               </div>
             )}
-          </div>
+
+            {/* Pagination — moving past the last synced page triggers the backend to sync more.
+                Next stays enabled even on what looks like the last page: only an empty result
+                after actually trying the next page means there's truly nothing further. */}
+            <div className="mt-4 flex items-center justify-between">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={page === 0 || isFetching}
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />上一页
+              </Button>
+              <p className="text-[10px] text-gray-500">
+                {isFetching ? '同步中…' : `第 ${data.number + 1} 页`}
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={isFetching || data.content.length === 0}
+                onClick={() => setPage(p => p + 1)}
+              >
+                下一页<ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </>
         )}
       </div>
     </div>
