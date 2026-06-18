@@ -123,30 +123,35 @@ Key variables:
 ## Frontend Routes (implemented)
 | Route | Description |
 |---|---|
-| `/` | Backend health-check / landing |
+| `/` | Inbox home — list, classify badges, infinite scroll, semantic search |
 | `/login` | OAuth entry — Gmail and Outlook buttons |
 | `/auth/callback` | Receives `?token=` after OAuth, stores it, redirects to `/` |
+| `/auth/link-callback` | OAuth callback for linking an additional account to an existing user |
+| `/accounts` | Manage linked Gmail/Outlook accounts |
+| `/chat` | SSE-streamed chat with the agent (`MainAgentService`) |
+| `/digest` | On-demand daily digest, cached per day in `daily_digests` |
+| `/drafts` | Pending reply drafts — approve (send) / reject |
+| `/emails/[id]` | Email detail — triggers on-demand summarize, archive/flag actions, draft generation |
 
 ## Agent Design
 
-```
-[EmailFetch] → [Classify] → [Summarize] → [ActionDecide]
-                                              ↓
-                                    [Reply / Archive / Flag]
-```
+There is no single unified LangGraph4j graph spanning fetch → classify → summarize → action. Email processing is two independent, mostly LLM-direct stages; only the chat agent's email-analysis tool actually runs a LangGraph4j graph.
 
-- **EmailFetch**: pulls emails from Gmail/Graph adapters
-- **Classify**: LLM assigns category, priority, sentiment (`gpt-4o-mini`)
-- **Summarize**: LLM generates concise summary + action items (`gpt-4o`)
-- **ActionDecide**: routes to appropriate action node based on user rules
-- Memory: pgvector (semantic search) + Redis (recent context window); old messages are compressed via `ConversationSummaryAgent` when window exceeds `memoryWindowSize`
+1. **Sync + classify (automatic)** — `EmailSyncJob` (every 5 min) or `InitialSyncService` (on account link) fetches new mail, then `EmailProcessingService.processBatch()` calls `EmailProcessingAgent` (LangChain4j `AiServices`, `gpt-4o-mini`, no graph) and stores category/priority/sentiment/`recommendedAction` on `ProcessingResult`. `recommendedAction` is a suggestion label only — nothing reads it to auto-execute an action.
+2. **Summarize (on demand)** — when a user opens an email's detail page, `EmailProcessingService.analyzeOnDemand()` calls `EmailSummarizeAgent` (LangChain4j `AiServices`, `gpt-4o`, no graph) and asynchronously embeds the result into pgvector.
+3. **Reply / Archive / Flag (manual, user-triggered, no auto-routing)**:
+   - Archive: `POST /emails/{messageId}/archive` (`EmailController`)
+   - Flag: `POST /emails/{messageId}/flag` (`EmailController`)
+   - Reply: user clicks "generate draft" → `EmailProcessingService.generateDraft()` → `ActionAgentService.draftReply()` (single LLM call) → draft enters human review via `DraftController` (`/drafts/pending`, `/drafts/{id}/approve`, `/drafts/{id}/reject`); only `approve` actually sends.
+4. **Chat agent** — `MainAgentService` builds a LangChain4j `AiServices` (`MainAgent` interface) with `MessageWindowChatMemory` (per-session) + `MainAgentTools`. One of those tools, "analyze selected emails," is the only place that runs a real LangGraph4j graph: `DigestAgentGraph` (`agent/digest/`), `START → fetch(FetchSelectedNode) → summarize(SummarizeNode) → digest(GenerateDigestNode) → END` (a `digestOnlyGraph` variant skips fetch+summarize and reuses existing `ProcessingResult` summaries). It runs once per tool call and returns an aggregated overview — there's no persistent state machine.
+5. **Daily digest** — not a scheduled job; the frontend calls `POST /digest/generate` on demand, cached per day in `daily_digests` (`force=true` re-runs the LLM).
+6. Memory: pgvector (semantic search) + Redis (recent context window); old messages are compressed via `ConversationSummaryAgent` when window exceeds `memoryWindowSize` (`SessionMemoryManager`).
 
 ## Scheduled Jobs
 | Job | Schedule | Description |
 |---|---|---|
-| EmailSyncJob | every 5 min | Fetch new emails from all providers |
-| DailySummaryJob | 08:00 daily | Generate daily digest via OpenAI |
-| MemoryConsolidationJob | 00:00 daily | Compress old email memories into pgvector |
+| EmailSyncJob | every 5 min (`0 */5 * * * *`) | Fetch new emails for all linked accounts |
+| MemoryConsolidationJob | daily 00:30 (`0 30 0 * * *`) | Embed un-embedded `ProcessingResult`s into pgvector |
 
 ## Default Models
 - Primary reasoning / summarize / compress: `gpt-4o`
