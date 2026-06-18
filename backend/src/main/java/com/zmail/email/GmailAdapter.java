@@ -112,6 +112,32 @@ public class GmailAdapter implements EmailPort {
     }
 
     @Override
+    public List<EmailMessage> fetchBefore(EmailAccount account, int maxResults, OffsetDateTime before) {
+        try {
+            Gmail service = buildService(account);
+            ListMessagesResponse response = service.users().messages()
+                    .list("me")
+                    .setQ("before:" + before.toEpochSecond())
+                    .setMaxResults((long) maxResults)
+                    .execute();
+
+            if (response.getMessages() == null) return List.of();
+
+            List<EmailMessage> result = new ArrayList<>();
+            for (Message ref : response.getMessages()) {
+                Message full = service.users().messages()
+                        .get("me", ref.getId())
+                        .setFormat("full")
+                        .execute();
+                result.add(toEmailMessage(full, account.getId()));
+            }
+            return result;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch older Gmail messages", e);
+        }
+    }
+
+    @Override
     public void send(EmailAccount account, EmailDraft draft) {
         try {
             Gmail service = buildService(account);

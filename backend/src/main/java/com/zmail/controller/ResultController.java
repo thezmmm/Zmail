@@ -6,7 +6,10 @@ import com.zmail.model.ProcessingResultRepository;
 import com.zmail.service.EmailEmbeddingService;
 import com.zmail.service.EmailEmbeddingService.SimilarEmailResult;
 import com.zmail.service.EmailProcessingService;
+import com.zmail.service.EmailSyncService;
+import com.zmail.service.HistoryBackfillService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -28,12 +31,23 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/results")
 @RequiredArgsConstructor
+@Slf4j
 public class ResultController {
 
     private final ProcessingResultRepository repository;
     private final EmailProcessingService processingService;
     private final EmailEmbeddingService embeddingService;
+    private final EmailSyncService syncService;
+    private final HistoryBackfillService backfillService;
 
+    /**
+     * Lists processed emails. There is no standalone "sync" action — paging itself drives
+     * how much gets synced from the provider, but only for the unfiltered ("all categories")
+     * view: a category-filtered page can't reliably know how many raw emails to pull to fill
+     * itself with matching rows, so filtered views just paginate over whatever's already synced.
+     *  - Page 0 (newest) opportunistically catches up to "now" before answering.
+     *  - Later pages backfill older history just far enough to cover the requested page.
+     */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ProcessingResult>>> list(
             Authentication auth,
@@ -47,7 +61,22 @@ public class ResultController {
             return ResponseEntity.badRequest().body(ApiResponse.error("Invalid pagination: page >= 0 and size >= 1 required"));
         }
         UUID userId = UUID.fromString(auth.getName());
-        Page<ProcessingResult> page = (category != null && !category.isBlank())
+        boolean filtered = category != null && !category.isBlank();
+
+        if (!filtered) {
+            if (pageable.getPageNumber() == 0) {
+                try {
+                    syncService.syncUser(userId);
+                } catch (Exception e) {
+                    log.debug("Skipping opportunistic sync for user {} — {}", userId, e.getMessage());
+                }
+            } else {
+                long rowsNeeded = (long) (pageable.getPageNumber() + 1) * pageable.getPageSize();
+                backfillService.ensureBackfilled(userId, rowsNeeded);
+            }
+        }
+
+        Page<ProcessingResult> page = filtered
                 ? repository.findByUserIdAndCategory(userId, category, pageable)
                 : repository.findByUserId(userId, pageable);
         return ResponseEntity.ok(ApiResponse.ok(page));

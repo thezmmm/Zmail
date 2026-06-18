@@ -101,6 +101,26 @@ public class MsGraphAdapter implements EmailPort {
     }
 
     @Override
+    public List<EmailMessage> fetchBefore(EmailAccount account, int maxResults, OffsetDateTime before) {
+        GraphServiceClient client = buildClient(account);
+        String filter = "receivedDateTime lt " +
+                before.toInstant().toString();
+        MessageCollectionResponse response = client.me().messages().get(config -> {
+            config.queryParameters.filter = filter;
+            config.queryParameters.top = maxResults;
+            config.queryParameters.orderby = new String[]{"receivedDateTime desc"};
+            config.queryParameters.select = new String[]{
+                    "id", "subject", "sender", "toRecipients", "receivedDateTime", "body"
+            };
+        });
+        if (response == null || response.getValue() == null) return List.of();
+        UUID accountId = account.getId();
+        return response.getValue().stream()
+                .map(msg -> toEmailMessage(msg, accountId))
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public void send(EmailAccount account, EmailDraft draft) {
         GraphServiceClient client = buildClient(account);
 

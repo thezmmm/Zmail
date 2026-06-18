@@ -55,6 +55,12 @@ public class EmailService {
                 .collect(Collectors.toList());
     }
 
+    /** Older emails for a single account — used by on-demand history backfill. */
+    public List<EmailMessage> fetchBefore(UUID userId, UUID accountId, int maxResults, OffsetDateTime before) {
+        EmailAccount account = findAccount(userId, accountId);
+        return getAdapter(account.getProvider()).fetchBefore(account, maxResults, before);
+    }
+
     /** Accounts flagged as needing re-authorization are excluded from background fetch operations. */
     private boolean isAccessible(EmailAccount account) {
         if (account.isNeedsReauth()) {

@@ -10,6 +10,7 @@ import java.util.UUID;
 public interface EmailAccountRepository extends JpaRepository<EmailAccount, UUID> {
     Optional<EmailAccount> findByUserAndProviderAndAccountEmail(User user, EmailProvider provider, String accountEmail);
     List<EmailAccount> findAllByUser(User user);
+    List<EmailAccount> findAllByUserId(UUID userId);
     List<EmailAccount> findAllByUserAndProvider(User user, EmailProvider provider);
 
     @Query("SELECT DISTINCT a.user.id FROM EmailAccount a")

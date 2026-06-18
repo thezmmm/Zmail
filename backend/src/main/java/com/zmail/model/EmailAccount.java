@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.OffsetDateTime;
@@ -48,6 +49,15 @@ public class EmailAccount {
     /** True when the stored refresh token is invalid or revoked; requires user to re-authorize. */
     @Column(name = "needs_reauth", nullable = false)
     private boolean needsReauth = false;
+
+    /** Exclusive upper bound for the next on-demand history-backfill request; null until the first backfill click. */
+    @Column(name = "history_backfill_before")
+    private OffsetDateTime historyBackfillBefore;
+
+    /** True once a backfill request has reached the bottom of this account's mailbox. */
+    @ColumnDefault("false")
+    @Column(name = "history_backfill_complete", nullable = false)
+    private boolean historyBackfillComplete = false;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

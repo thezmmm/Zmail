@@ -4,7 +4,6 @@ import com.zmail.model.ApiResponse;
 import com.zmail.model.EmailAccount;
 import com.zmail.model.EmailProvider;
 import com.zmail.service.EmailService;
-import com.zmail.service.EmailSyncService;
 import com.zmail.service.InitialSyncService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -29,7 +28,6 @@ public class AccountController {
 
     private final EmailService emailService;
     private final InitialSyncService initialSyncService;
-    private final EmailSyncService syncService;
 
     /** List all linked email accounts for the authenticated user. */
     @GetMapping
@@ -49,18 +47,6 @@ public class AccountController {
         UUID userId = UUID.fromString(auth.getName());
         emailService.deleteAccount(userId, accountId);
         return ResponseEntity.ok(ApiResponse.ok());
-    }
-
-    /**
-     * Manually triggers an incremental sync for the authenticated user.
-     * Returns the number of newly classified emails.
-     * Responds 409 if a sync (initial or scheduled) is already in progress or the cooldown hasn't elapsed.
-     */
-    @PostMapping("/sync")
-    public ResponseEntity<ApiResponse<Integer>> sync(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
-        int count = syncService.syncUser(userId);
-        return ResponseEntity.ok(ApiResponse.ok(count));
     }
 
     /**

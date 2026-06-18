@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS email_accounts (
     refresh_token   TEXT,
     token_expiry    TIMESTAMPTZ,
     needs_reauth    BOOLEAN NOT NULL DEFAULT FALSE,
+    history_backfill_before    TIMESTAMPTZ,
+    history_backfill_complete  BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, provider, account_email)
 );

@@ -38,6 +38,13 @@ public interface ProcessingResultRepository extends JpaRepository<ProcessingResu
 
     long countByUserIdAndActionTaken(UUID userId, ActionType actionTaken);
 
+    /** Total processed emails for a user, across all accounts — used to decide whether a page needs backfill. */
+    long countByUserId(UUID userId);
+
+    /** Earliest received email already processed for an account — starting point for history backfill. */
+    @Query("SELECT MIN(r.receivedAt) FROM ProcessingResult r WHERE r.accountId = :accountId")
+    Optional<OffsetDateTime> findEarliestReceivedAt(@Param("accountId") UUID accountId);
+
     List<ProcessingResult> findByUserIdAndProcessedAtAfter(UUID userId, OffsetDateTime since);
 
     Page<ProcessingResult> findByUserIdAndProcessedAtAfter(UUID userId, OffsetDateTime since, Pageable pageable);
