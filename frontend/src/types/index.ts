@@ -60,7 +60,6 @@ export interface ProcessingResult {
   requiresResponse: boolean
   actionTaken: ActionTaken
   draftStatus: DraftStatus | null
-  replyDraft: string | null
   analyzed: boolean
 }
 

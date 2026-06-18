@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -36,6 +37,11 @@ public class DraftService {
     public Page<Draft> listPending(UUID userId, Pageable pageable) {
         return draftRepository.findByUserIdAndStatusOrderByCreatedAtDesc(
                 userId, DraftStatus.PENDING_REVIEW, pageable);
+    }
+
+    /** Most recent draft generated for a given email, if any. */
+    public Optional<Draft> findByResultId(UUID userId, UUID resultId) {
+        return draftRepository.findTopByUserIdAndResultIdOrderByCreatedAtDesc(userId, resultId);
     }
 
     /** Called by EmailProcessingService when AI generates a reply draft. */

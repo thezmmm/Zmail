@@ -69,10 +69,6 @@ public class ProcessingResult {
     @Column(name = "action_items", columnDefinition = "TEXT")
     private String actionItems;
 
-    /** LLM-generated reply draft; only set when actionTaken = REPLY. */
-    @Column(name = "reply_draft", columnDefinition = "TEXT")
-    private String replyDraft;
-
     /** Lifecycle of a reply draft; null for non-REPLY actions. */
     @Enumerated(EnumType.STRING)
     @Column(name = "draft_status", length = 20)

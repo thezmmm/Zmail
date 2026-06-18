@@ -1,7 +1,18 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api, { unwrap } from '@/lib/api'
 import type { ApiResponse, CreateDraftRequest, Draft, PagedResponse } from '@/types'
+
+/** Most recent draft generated for a given email (e.g. the email detail page), or null if none exists. */
+export function useDraftByResult(resultId: string) {
+  return useQuery({
+    queryKey: ['draft', 'by-result', resultId],
+    queryFn: () =>
+      api
+        .get<ApiResponse<Draft | null>>(`/drafts/by-result/${resultId}`)
+        .then(r => r.data.data ?? null),
+  })
+}
 
 export function usePendingDrafts() {
   return useInfiniteQuery({
@@ -72,6 +83,7 @@ export function useApproveDraft() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['drafts'] })
+      qc.invalidateQueries({ queryKey: ['draft'] })
       // ProcessingResult.draftStatus is updated on the server; keep the results cache in sync
       qc.invalidateQueries({ queryKey: ['results'] })
     },
@@ -104,6 +116,7 @@ export function useRejectDraft() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['drafts'] })
+      qc.invalidateQueries({ queryKey: ['draft'] })
       qc.invalidateQueries({ queryKey: ['results'] })
     },
   })

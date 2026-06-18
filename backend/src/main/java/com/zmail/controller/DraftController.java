@@ -34,6 +34,18 @@ public class DraftController {
                 draftService.listPending(userId, pageable).map(draftService::toDto)));
     }
 
+    /** Look up the most recent draft generated for a given email (used by the email detail page). */
+    @GetMapping("/by-result/{resultId}")
+    public ResponseEntity<ApiResponse<DraftDto>> getByResult(
+            @PathVariable UUID resultId,
+            Authentication auth) {
+        UUID userId = UUID.fromString(auth.getName());
+        return draftService.findByResultId(userId, resultId)
+                .map(draftService::toDto)
+                .map(dto -> ResponseEntity.ok(ApiResponse.ok(dto)))
+                .orElseGet(() -> ResponseEntity.ok(ApiResponse.ok(null)));
+    }
+
     /** Create a new user-composed draft. */
     @PostMapping
     public ResponseEntity<ApiResponse<DraftDto>> create(

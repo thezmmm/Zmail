@@ -10,7 +10,7 @@ import {
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import api, { unwrap } from '@/lib/api'
-import { useApproveDraft, useRejectDraft } from '@/hooks/useDrafts'
+import { useApproveDraft, useDraftByResult, useRejectDraft } from '@/hooks/useDrafts'
 import { useArchiveEmail, useFlagEmail, useMarkReadEmail } from '@/hooks/useEmailActions'
 import { useAnalyzeResult, useGenerateDraft } from '@/hooks/useResults'
 import PriorityBadge from '@/components/email/PriorityBadge'
@@ -67,6 +67,7 @@ export default function EmailDetailClient() {
 
   const analyze       = useAnalyzeResult(id)
   const generateDraft = useGenerateDraft(id)
+  const { data: draft } = useDraftByResult(id)
   const approve       = useApproveDraft()
   const reject        = useRejectDraft()
   const archive       = useArchiveEmail()
@@ -231,7 +232,7 @@ export default function EmailDetailClient() {
               <div className="h-2 w-9/12 rounded bg-gray-700/60" />
             </div>
           </div>
-        ) : current.draftStatus === 'PENDING_REVIEW' && current.replyDraft ? (
+        ) : current.draftStatus === 'PENDING_REVIEW' && draft ? (
           <div className={cn(
             'rounded-xl border border-blue-800/50 bg-blue-950/30 p-3.5 transition-opacity duration-150',
             (approve.isPending || reject.isPending) && 'pointer-events-none opacity-50',
@@ -240,17 +241,17 @@ export default function EmailDetailClient() {
               <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400">草稿待审批</p>
               <div className="flex gap-1">
                 <Button variant="danger" size="sm" loading={reject.isPending}
-                  onClick={() => reject.mutate(current.id)}>
+                  onClick={() => reject.mutate(draft.id)}>
                   <XCircle className="h-3 w-3" />拒绝
                 </Button>
                 <Button variant="primary" size="sm" loading={approve.isPending}
-                  onClick={() => approve.mutate({ id: current.id })}>
+                  onClick={() => approve.mutate({ id: draft.id })}>
                   <CheckCircle className="h-3 w-3" />批准发送
                 </Button>
               </div>
             </div>
             <pre className="whitespace-pre-wrap rounded-lg bg-gray-900/60 p-3 text-[11px] leading-relaxed text-gray-300">
-              {current.replyDraft}
+              {draft.body}
             </pre>
           </div>
         ) : current.draftStatus === 'SENT' ? (
@@ -262,7 +263,7 @@ export default function EmailDetailClient() {
               <FileText className="h-3 w-3" />重新生成
             </Button>
           </div>
-        ) : !current.replyDraft ? (
+        ) : current.draftStatus !== 'PENDING_REVIEW' ? (
           <div>
             <Button variant="secondary" size="sm" onClick={() => generateDraft.mutate()}>
               <FileText className="h-3.5 w-3.5" />生成草稿

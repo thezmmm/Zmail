@@ -49,6 +49,7 @@ export function useGenerateDraft(resultId: string) {
     onSuccess: data => {
       qc.setQueryData(['results', resultId], data)
       qc.invalidateQueries({ queryKey: ['drafts'] })
+      qc.invalidateQueries({ queryKey: ['draft', 'by-result', resultId] })
     },
   })
 }

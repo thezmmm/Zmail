@@ -67,7 +67,6 @@ CREATE TABLE IF NOT EXISTS processing_results (
     action_taken        VARCHAR(20),
     summary             TEXT,
     action_items        TEXT,
-    reply_draft         TEXT,
     draft_status        VARCHAR(20),
     received_at         TIMESTAMPTZ,
     processed_at        TIMESTAMPTZ NOT NULL,
