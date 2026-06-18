@@ -29,14 +29,15 @@ public class EmailSyncService {
     private final AgentProperties props;
 
     /**
-     * Runs an incremental sync for the given user.
+     * Runs an incremental sync for the given user. Classification runs in parallel via
+     * {@link EmailProcessingService#processBatch} (same path used by initial sync and history
+     * backfill) instead of one LLM call at a time, since callers may block on this synchronously.
      *
-     * @return number of newly classified emails
      * @throws IllegalStateException if an initial sync is still running, or if the
      *                               RunGuard cooldown has not expired yet — callers may
      *                               let this propagate to a 409 response
      */
-    public int syncUser(UUID userId) {
+    public void syncUser(UUID userId) {
         if (initialSyncService.getStatus(userId) == InitialSyncService.SyncStatus.RUNNING) {
             throw new IllegalStateException("Initial sync is still in progress, please wait");
         }
@@ -44,29 +45,12 @@ public class EmailSyncService {
 
         OffsetDateTime syncStartedAt = OffsetDateTime.now();
         OffsetDateTime since = watermark.getWatermark(userId);
-        int processed = 0;
-        int skipped = 0;
 
         try {
             List<EmailMessage> emails = emailService.fetchRecent(userId, props.getMaxEmailsPerRun(), since);
-
-            for (EmailMessage email : emails) {
-                if (processingService.isAlreadyProcessed(userId, email.providerId())) {
-                    skipped++;
-                    continue;
-                }
-                try {
-                    processingService.classify(userId, email.accountId(), email);
-                    processed++;
-                } catch (Exception e) {
-                    log.error("Failed to classify email {} for user {}: {}",
-                            email.providerId(), userId, e.getMessage());
-                }
-            }
-
+            processingService.processBatch(userId, emails);
             watermark.advance(userId, syncStartedAt);
-            log.info("Sync complete for user {} since {} — processed={} skipped={} total={}",
-                    userId, since, processed, skipped, emails.size());
+            log.info("Sync complete for user {} since {} — fetched {} emails", userId, since, emails.size());
         } catch (IllegalStateException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -74,7 +58,5 @@ public class EmailSyncService {
         } finally {
             runGuard.release(userId);
         }
-
-        return processed;
     }
 }
