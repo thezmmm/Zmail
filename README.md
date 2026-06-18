@@ -164,41 +164,69 @@ FetchSelected → Summarize（并发）→ GenerateDigest
 
 ## 邮件同步机制
 
+没有"立即同步"或"同步历史邮件"这类手动按钮——**翻页本身驱动同步**：前端收件箱是按页（非无限滚动）展示 `processing_results`，请求第几页决定后端要不要先去 Gmail/Graph 拉新邮件或回填更早的历史邮件。
+
 ### 触发时机
 
 | 触发源 | 时机 | 覆盖范围 |
 |---|---|---|
 | **初始同步**（`InitialSyncService`） | OAuth 授权完成后（新登录、绑定新账户、重新授权） | 最近 3 天，最多 100 封/账户 |
-| **定时同步**（`EmailSyncJob`） | 每 5 分钟自动执行 | 上次水印时间之后，最多 50 封/账户 |
+| **定时同步**（`EmailSyncJob`） | 每 5 分钟自动执行，遍历所有用户 | 上次水印时间之后，最多 50 封/账户 |
+| **翻页追新**（`GET /results` 第 0 页，未筛选分类时） | 用户打开/刷新收件箱第一页 | 顺手追到"现在"，等价于手动跑一次增量同步 |
+| **翻页回填**（`GET /results` 第 N>0 页，未筛选分类时） | 用户点"下一页"翻到本地数据不够覆盖的页 | 按账号游标往前拉更早的邮件，直到够覆盖该页或邮箱到底 |
 | **手动拉取**（`GET /emails`） | 前端主动调用 | 当前未读邮件，实时透传，**不入库不分类** |
 
-### 同步水印（SyncWatermarkService）
+按分类筛选（`category=WORK` 等）时不会触发任何同步或回填，只在已有数据里翻页——因为没法预知要再拉多少原始邮件才能凑够一页匹配该分类的结果。
 
-水印持久化到 **Redis**，服务重启后自动恢复，不会丢失同步进度。格式：`zmail:sync:watermark:{userId}`，TTL 90 天。
+### 同步水印（SyncWatermarkService）—— 追新方向
+
+水印持久化到 **Redis**，服务重启后自动恢复，不会丢失同步进度。格式：`zmail:sync:watermark:{userId}`，TTL 90 天，按用户维度记录"已经追到哪个时间点"。
 
 仅当无历史水印时（新用户）回退到 `now - 24h` 兜底。
 
+### 历史回填游标（`HistoryBackfillService`）—— 往回方向
+
+与水印相反，回填按**账号**维度记录游标（`email_accounts.history_backfill_before` / `history_backfill_complete`），因为每个账号的邮箱历史长度独立：
+
+```
+GET /results?page=N（N>0，未筛选分类）
+  └─ 当前已同步行数 < (N+1)×pageSize 时：
+       对每个未回填完、未 needsReauth 的账号：
+         before = account.historyBackfillBefore ?? 该账号最早已处理邮件的接收时间 ?? now()
+         批量拉取（GmailAdapter.fetchBefore / MsGraphAdapter.fetchBefore，固定 50 封一批）
+           → 空结果 / 拉到的数量 < 50  ⇒ historyBackfillComplete = true（该账号邮箱已到底）
+           → 否则 → historyBackfillBefore = 这批里最早一封的接收时间（下次从这里继续往前）
+         分类结果写 processing_results（复用阶段 1 的 processBatch，照常去重）
+       重复上述过程，最多 10 个批次/请求，避免单次翻页无限拉取
+```
+
 ### 并发保护
 
-- 同一用户的初始同步正在进行中时，定时任务会自动跳过该用户，避免 LLM classify 重复调用
-- `RunGuard` 保证同一用户定时同步不并发（60s 最小间隔）
+- 同一用户的初始同步正在进行中时，追新/回填会自动跳过该用户，避免 LLM classify 重复调用
+- `RunGuard` 保证同一用户追新同步不并发（60s 最小间隔）；命中冷却时静默跳过，不影响该次请求正常返回当前已有数据
+- 一批邮件的分类调用通过共享的 `agentExecutor` 并行执行，并发数由 `zmail.agent.max-parallel-llm-calls`（默认 5）限制——这是进程级别的全局上限，不会因为多个用户同时翻页而叠加爆表
 - `isAlreadyProcessed()` + DB unique 约束（`user_id, account_id, email_provider_id`）双重防止重复入库
-- 多账户中单个账户失败时，其余账户继续正常同步
+- 多账户中单个账户失败（含 `needsReauth`）时，其余账户继续正常同步/回填
 
 ### AI 处理流水线（三阶段按需触发）
 
 ```
-阶段 1 — 后台同步（自动，每 5 分钟）
+阶段 1 — 同步 + 分类（定时任务每 5 分钟自动跑一次，或用户翻到第 0 页时顺手触发一次）
 ─────────────────────────────────────────────────────
 fetchRecent(since=watermark)（Gmail / Graph，跳过 needsReauth 账号）
     │
     ├─ 已存在 processing_results → 跳过
     │
-    └─ 新邮件 → EmailProcessingAgent（gpt-4o-mini）
+    └─ 新邮件 → processBatch（agentExecutor 并发 ≤5）→ EmailProcessingAgent（gpt-4o-mini）
                   输出：category / priority / sentiment /
                         requiresResponse / recommendedAction
                   analyzed = false
                   → 写 processing_results
+
+阶段 1b — 历史回填（用户翻到本地数据不够的更后面页时触发，见上一节）
+─────────────────────────────────────────────────────
+fetchBefore(before=该账号游标)（Gmail / Graph，按账号独立游标，跳过 needsReauth 账号）
+    → 同样经 processBatch 并发分类 → 写 processing_results
 
 阶段 2 — 按需深度分析（用户首次打开邮件详情页时自动触发）
 ─────────────────────────────────────────────────────
@@ -249,8 +277,8 @@ AI 同步处理完的邮件存在 `processing_results` 表，是前端主收件�
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/results?page=0&size=20` | 分页获取当前用户所有处理结果，按邮件接收时间倒序 |
-| `GET` | `/results?page=0&size=20&category=WORK` | 按分类过滤（`WORK` / `PERSONAL` / `FINANCE` / `PROMOTIONS` / `OTHER`） |
+| `GET` | `/results?page=0&size=20` | 分页获取当前用户所有处理结果，按邮件接收时间倒序；`page=0` 顺手追新，`page>0` 顺手回填历史（见"邮件同步机制"） |
+| `GET` | `/results?page=0&size=20&category=WORK` | 按分类过滤（`WORK` / `PERSONAL` / `FINANCE` / `PROMOTIONS` / `OTHER`），**不触发**追新或回填 |
 | `GET` | `/results/{id}` | 获取单条处理结果详情 |
 | `POST` | `/results/{id}/analyze` | 触发按需深度分析（幂等，`analyzed=true` 后直接返回） |
 | `POST` | `/results/{id}/draft` | 手动生成 AI 回复草稿（幂等，存在待审批草稿时直接返回） |
@@ -377,7 +405,8 @@ zmail/
 │       ├── email/        # EmailPort、GmailAdapter、MsGraphAdapter
 │       ├── model/        # JPA 实体（User、AgentSession、ProcessingResult 等）
 │       ├── scheduler/    # 定时任务（EmailSyncJob）
-│       └── service/      # 业务逻辑（EmailProcessingService、DraftService 等）
+│       └── service/      # 业务逻辑（EmailProcessingService、EmailSyncService、
+│                          # HistoryBackfillService、DraftService 等）
 ├── docker-compose.yml
 └── CLAUDE.md
 ```
