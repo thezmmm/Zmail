@@ -2,8 +2,8 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { getToken, isTokenExpiringSoon } from '@/lib/auth'
-import api from '@/lib/api'
+import { getToken } from '@/lib/auth'
+import { refreshTokenIfNeeded, handleUnauthorized } from '@/lib/api'
 import type { AgentMessage, AgentSession, ChatRequest, EmailRef } from '@/types'
 
 /**
@@ -56,10 +56,8 @@ export function useChat(sessionId: string | null) {
       ])
 
       // Proactively refresh JWT before opening the SSE stream — raw fetch bypasses
-      // the axios interceptor, so we mirror the same logic from api.ts here.
-      if (getToken() && isTokenExpiringSoon()) {
-        try { await api.post('/auth/token/refresh') } catch { /* 401 will surface below */ }
-      }
+      // the axios interceptors, so we share the same refresh helper as api.ts.
+      await refreshTokenIfNeeded()
 
       setIsStreaming(true)
       setStreamingContent('')
@@ -101,6 +99,10 @@ export function useChat(sessionId: string | null) {
           signal: abortRef.current.signal,
         })
 
+        if (res.status === 401) {
+          handleUnauthorized()
+          return
+        }
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
 
         const reader  = res.body.getReader()
